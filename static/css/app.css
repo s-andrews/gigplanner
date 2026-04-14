@@ -1,0 +1,3 @@
+body { background: #f8f9fa; }
+.card { border-radius: .75rem; }
+.list-group-item { border-radius: .5rem !important; margin-bottom: .5rem; }
