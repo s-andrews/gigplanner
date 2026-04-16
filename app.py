@@ -197,7 +197,7 @@ def inject_user():
 def index():
     if session.get("user_id"):
         return redirect(url_for("dashboard"))
-    return render_template("welcome.html")
+    return render_template("welcome.html", show_navbar=False)
 
 
 @app.route("/register", methods=["GET", "POST"])
