@@ -20,7 +20,7 @@
       <div class="availability-control" data-gig-id="{{ gig['id'] }}">
         <label class="form-label mb-0">Availability</label>
         <select class="form-select form-select-sm availability-select" style="min-width:160px;">
-          {% for option in ['Available','Not Available','Unsure yet'] %}
+          {% for option in ['Unanswered','Available','Not Available','Unsure yet'] %}
           <option value="{{ option }}" {% if gig['availability_status']==option %}selected{% endif %}>{{ option }}</option>
           {% endfor %}
         </select>
