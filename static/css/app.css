@@ -1,3 +1,38 @@
-body { background: #f8f9fa; }
-.card { border-radius: .75rem; }
-.list-group-item { border-radius: .5rem !important; margin-bottom: .5rem; }
+body {
+  background-color: #0f172a;
+  color: #f8f9fa;
+  min-height: 100vh;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.62), rgba(15, 23, 42, 0.62)),
+    url('/static/images/umbrella_background.jpg');
+  background-size: cover;
+  background-position: center;
+  filter: blur(2px);
+  transform: scale(1.02);
+  z-index: -1;
+}
+
+.card {
+  border-radius: 0.75rem;
+  background-color: rgba(248, 249, 250, 0.94);
+  color: #212529;
+}
+
+.list-group-item {
+  border-radius: 0.5rem !important;
+  margin-bottom: 0.5rem;
+  background-color: rgba(248, 249, 250, 0.92);
+}
+
+h1,
+h2,
+h3 {
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
