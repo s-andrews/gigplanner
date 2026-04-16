@@ -13,21 +13,21 @@
     <a class="navbar-brand" href="{{ url_for('index') }}">Gig Planner</a>
     {% if current_user %}
     <div class="d-flex flex-wrap align-items-center gap-2">
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('dashboard') }}">Dashboard</a>
       {% if current_band %}
       <span class="text-light small px-1">{{ current_band['name'] }}</span>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('band_admin', band_id=current_band['id']) }}">Gig Admin</a>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('band_setup', band_id=current_band['id']) }}">Band Setup</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('band_admin', band_id=current_band['id']) }}">Gig Admin</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('band_setup', band_id=current_band['id']) }}">Band Setup</a>
       {% endif %}
     </div>
     <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
       <span class="text-light">{{ current_user['name'] }}</span>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('profile') }}">My Details</a>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">Logout</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('profile') }}">My Details</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('logout') }}">Logout</a>
     </div>
     {% else %}
     <div class="ms-auto">
-      <a class="btn btn-outline-light btn-sm me-2" href="{{ url_for('login') }}">Login</a>
+      <a class="btn btn-secondary btn-sm me-2" href="{{ url_for('login') }}">Login</a>
       <a class="btn btn-light btn-sm" href="{{ url_for('register') }}">Register</a>
     </div>
     {% endif %}
