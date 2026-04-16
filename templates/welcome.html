@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="p-4 p-md-5 text-light rounded-3">
-  <h1>Welcome to Gig Planner</h1>
+  <p class="text-center"><img src="{{ url_for('static', filename='images/gig_planner_logo.png') }}"></p>
   <p class="lead">Organise Gigs * Track Players and Deps</p>
   <div class="d-flex gap-2">
     <a class="btn btn-secondary" href="{{ url_for('register') }}">Create Account</a>
