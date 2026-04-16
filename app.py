@@ -408,6 +408,23 @@ def add_part(band_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/band/<int:band_id>/part/<int:part_id>", methods=["DELETE"])
+@login_required
+def delete_part(band_id, part_id):
+    uid = session["user_id"]
+    if not is_band_admin(band_id, uid):
+        return jsonify({"ok": False}), 403
+
+    db = get_db()
+    part = db.execute("SELECT id FROM parts WHERE id = ? AND band_id = ?", (part_id, band_id)).fetchone()
+    if not part:
+        return jsonify({"ok": False, "error": "Part not found"}), 404
+
+    db.execute("DELETE FROM parts WHERE id = ?", (part_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/band/<int:band_id>/player", methods=["POST"])
 @login_required
 def add_player_to_band(band_id):
@@ -456,6 +473,52 @@ def add_player_to_band(band_id):
         """,
         (band_id, user_id, instruments or (user["instruments_played"] if user else "")),
     )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/band/<int:band_id>/player/<int:user_id>", methods=["DELETE"])
+@login_required
+def delete_player_from_band(band_id, user_id):
+    uid = session["user_id"]
+    if not is_band_admin(band_id, uid):
+        return jsonify({"ok": False}), 403
+
+    db = get_db()
+    membership = db.execute(
+        "SELECT id FROM band_memberships WHERE band_id = ? AND user_id = ?",
+        (band_id, user_id),
+    ).fetchone()
+    if not membership:
+        return jsonify({"ok": False, "error": "Player not found"}), 404
+
+    db.execute("DELETE FROM band_admins WHERE band_id = ? AND user_id = ?", (band_id, user_id))
+    db.execute(
+        """
+        DELETE FROM availability
+        WHERE user_id = ?
+          AND gig_id IN (SELECT id FROM gigs WHERE band_id = ?)
+        """,
+        (user_id, band_id),
+    )
+    db.execute(
+        """
+        DELETE FROM part_defaults
+        WHERE user_id = ?
+          AND part_id IN (SELECT id FROM parts WHERE band_id = ?)
+        """,
+        (user_id, band_id),
+    )
+    db.execute(
+        """
+        UPDATE gig_parts
+        SET assigned_user_id = NULL
+        WHERE assigned_user_id = ?
+          AND gig_id IN (SELECT id FROM gigs WHERE band_id = ?)
+        """,
+        (user_id, band_id),
+    )
+    db.execute("DELETE FROM band_memberships WHERE band_id = ? AND user_id = ?", (band_id, user_id))
     db.commit()
     return jsonify({"ok": True})
 
@@ -614,15 +677,20 @@ def create_gig(band_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/gig/<int:gig_id>", methods=["POST"])
+@app.route("/api/gig/<int:gig_id>", methods=["POST", "DELETE"])
 @login_required
 def update_gig(gig_id):
-    data = request.json
     db = get_db()
     gig = db.execute("SELECT * FROM gigs WHERE id = ?", (gig_id,)).fetchone()
     if not gig or not is_band_admin(gig["band_id"], session["user_id"]):
         return jsonify({"ok": False}), 403
 
+    if request.method == "DELETE":
+        db.execute("DELETE FROM gigs WHERE id = ?", (gig_id,))
+        db.commit()
+        return jsonify({"ok": True})
+
+    data = request.json
     db.execute(
         """
         UPDATE gigs SET
