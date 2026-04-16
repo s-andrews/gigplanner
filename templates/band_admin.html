@@ -19,7 +19,7 @@
 <h3>Existing Gigs</h3>
 <div class="table-responsive mb-3">
 <table class="table table-striped align-middle" id="gigs-table">
-  <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Location</th><th>Status</th><th>Actions</th></tr></thead>
+  <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Location</th><th>Status</th><th>Responses</th><th>Actions</th></tr></thead>
   <tbody>
     {% for gig in gigs %}
     <tr data-gig-id="{{ gig['id'] }}">
@@ -33,9 +33,16 @@
           <option {% if gig['status']=='Confirmed' %}selected{% endif %}>Confirmed</option>
         </select>
       </td>
+      <td class="small text-nowrap">
+        {{ gig['available_count'] }} Available,
+        {{ gig['not_available_count'] }} Not Available,
+        {{ gig['unsure_count'] }} Not sure,
+        {{ gig['unanswered_count'] }} Unanswered
+      </td>
       <td>
         <button class="btn btn-sm btn-primary save-gig">Save</button>
         <button class="btn btn-sm btn-outline-secondary manage-parts">Edit Lineup</button>
+        <button class="btn btn-sm btn-outline-info view-responses">View Responses</button>
       </td>
     </tr>
     {% endfor %}
@@ -61,6 +68,17 @@
           </div>
           <div class="col-md-2"><button id="add-gig-part-btn" class="btn btn-primary w-100">Add</button></div>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="responsesModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Gig Responses</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div id="responses-list"></div>
       </div>
     </div>
   </div>

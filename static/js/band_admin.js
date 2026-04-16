@@ -117,3 +117,41 @@ document.getElementById('add-gig-part-btn')?.addEventListener('click', async () 
   document.getElementById('new-gig-part-name').value = '';
   loadParts(activeGigId);
 });
+
+async function loadResponses(gigId) {
+  const res = await fetch(`/api/gig/${gigId}/responses`);
+  const data = await res.json();
+  const container = document.getElementById('responses-list');
+  if (!data.ok) {
+    container.innerHTML = '<div class="alert alert-danger">Could not load responses</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle mb-0">
+        <thead>
+          <tr><th>Player</th><th>Response</th><th>Updated</th></tr>
+        </thead>
+        <tbody>
+          ${data.responses.map((row) => `
+            <tr>
+              <td>${row.player_name}</td>
+              <td>${row.availability_status}</td>
+              <td>${row.updated_at ? new Date(row.updated_at).toLocaleString() : '-'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+document.querySelectorAll('.view-responses').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    const gigId = e.target.closest('tr').dataset.gigId;
+    loadResponses(gigId);
+    const modal = new bootstrap.Modal(document.getElementById('responsesModal'));
+    modal.show();
+  });
+});
