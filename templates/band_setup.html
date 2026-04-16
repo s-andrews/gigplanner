@@ -1,6 +1,12 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Band setup: {{ band['name'] }}</h2>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="mb-0">Band setup: {{ band['name'] }}</h2>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    <a class="btn btn-success" href="{{ url_for('complete_band_setup', band_id=band['id']) }}">Setup Complete</a>
+  </div>
+</div>
 <div class="row g-4">
   <div class="col-lg-5">
     <div class="card card-body">
@@ -56,7 +62,7 @@
       <div class="row g-2 mb-2 align-items-center">
         <div class="col-sm-4"><strong>{{ part['name'] }}</strong></div>
         <div class="col-sm-8">
-          <select class="form-select form-select-sm default-part-select" data-part-id="{{ part['id'] }}">
+          <select class="form-select form-select-sm default-part-select" data-part-id="{{ part['id'] }}" data-selected-user-id="{{ part['default_user_id'] or '' }}" autocomplete="off">
             <option value="">-- Unassigned --</option>
             {% for player in players %}
             <option value="{{ player['user_id'] }}" {% if part['default_user_id'] == player['user_id'] %}selected{% endif %}>{{ player['name'] }}</option>
@@ -67,6 +73,9 @@
       {% endfor %}
     </div>
   </div>
+</div>
+<div class="mt-4 d-flex justify-content-end">
+  <a class="btn btn-success" href="{{ url_for('complete_band_setup', band_id=band['id']) }}">Continue to Gig Admin</a>
 </div>
 {% endblock %}
 

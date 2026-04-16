@@ -61,26 +61,28 @@ async function loadParts(gigId) {
   }
   container.innerHTML = data.parts.map(part => `
     <div class="row g-2 mb-2 align-items-center" data-gp-id="${part.id}">
-      <div class="col-md-4"><input class="form-control form-control-sm gp-name" value="${part.part_name}"></div>
-      <div class="col-md-4"><select class="form-select form-select-sm gp-player">${playerOptions(part.assigned_user_id)}</select></div>
-      <div class="col-md-2"><small>${part.availability_status || '-'}</small></div>
-      <div class="col-md-2 d-flex gap-1"><button class="btn btn-sm btn-primary gp-save">Save</button><button class="btn btn-sm btn-danger gp-del">X</button></div>
+      <div class="col-md-5"><input class="form-control form-control-sm gp-name" value="${part.part_name}"></div>
+      <div class="col-md-5"><select class="form-select form-select-sm gp-player">${playerOptions(part.assigned_user_id)}</select></div>
+      <div class="col-md-2 d-flex justify-content-end"><button class="btn btn-sm btn-danger gp-del">Remove Part</button></div>
     </div>
   `).join('');
 
-  container.querySelectorAll('.gp-save').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
+  async function savePart(row) {
+    const gpId = row.dataset.gpId;
+    await fetch(`/api/gig/part/${gpId}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        part_name: row.querySelector('.gp-name').value,
+        assigned_user_id: row.querySelector('.gp-player').value || null,
+      })
+    });
+  }
+
+  container.querySelectorAll('.gp-name, .gp-player').forEach((field) => {
+    field.addEventListener('change', async (e) => {
       const row = e.target.closest('[data-gp-id]');
-      const gpId = row.dataset.gpId;
-      await fetch(`/api/gig/part/${gpId}`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          part_name: row.querySelector('.gp-name').value,
-          assigned_user_id: row.querySelector('.gp-player').value || null,
-        })
-      });
-      loadParts(gigId);
+      await savePart(row);
     });
   });
 

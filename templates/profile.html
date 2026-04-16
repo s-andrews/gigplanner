@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="mb-0">My details</h2>
+      <a class="btn btn-outline-secondary" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    </div>
+
+    <div class="card card-body">
+      {% if success %}
+      <div class="alert alert-success">{{ success }}</div>
+      {% endif %}
+
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          <input class="form-control" value="{{ user['name'] }}" disabled>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input class="form-control" value="{{ user['email'] }}" disabled>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="phone">Phone</label>
+          <input id="phone" name="phone" class="form-control" value="{{ user['phone'] or '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="instruments_played">Instruments Played</label>
+          <input id="instruments_played" name="instruments_played" class="form-control" value="{{ user['instruments_played'] or '' }}" placeholder="e.g., Trumpet, Flugelhorn">
+        </div>
+        <div class="d-flex justify-content-end">
+          <button class="btn btn-primary" type="submit">Save Details</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

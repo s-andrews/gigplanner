@@ -1,5 +1,14 @@
 const bandId = window.BAND_ID;
 
+function syncDefaultPartSelections() {
+  document.querySelectorAll('.default-part-select').forEach((select) => {
+    const selectedUserId = select.dataset.selectedUserId || '';
+    select.value = selectedUserId;
+  });
+}
+
+syncDefaultPartSelections();
+
 document.getElementById('add-part-btn')?.addEventListener('click', async () => {
   const name = document.getElementById('new-part-name').value.trim();
   if (!name) return;
@@ -49,5 +58,6 @@ document.querySelectorAll('.default-part-select').forEach((el) => {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({user_id})
     });
+    e.target.dataset.selectedUserId = e.target.value || '';
   });
 });

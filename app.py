@@ -39,6 +39,7 @@ def init_db():
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
             phone TEXT,
+            instruments_played TEXT,
             password_hash TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
@@ -120,6 +121,9 @@ def init_db():
         );
         """
     )
+    user_columns = {row[1] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
+    if "instruments_played" not in user_columns:
+        cur.execute("ALTER TABLE users ADD COLUMN instruments_played TEXT")
     db.commit()
     db.close()
 
@@ -152,7 +156,13 @@ def is_band_admin(band_id, user_id):
 
 @app.context_processor
 def inject_user():
-    return {"current_user": current_user()}
+    user = current_user()
+    current_band = None
+    band_id = request.view_args.get("band_id") if request.view_args else None
+    if user and band_id and is_band_admin(band_id, user["id"]):
+        db = get_db()
+        current_band = db.execute("SELECT id, name FROM bands WHERE id = ?", (band_id,)).fetchone()
+    return {"current_user": user, "current_band": current_band}
 
 
 @app.route("/")
@@ -203,6 +213,27 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("index"))
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    user = current_user()
+    if request.method == "POST":
+        phone = request.form.get("phone", "").strip()
+        instruments = request.form.get("instruments_played", "").strip()
+        db = get_db()
+        db.execute(
+            "UPDATE users SET phone = ?, instruments_played = ? WHERE id = ?",
+            (phone, instruments, user["id"]),
+        )
+        db.commit()
+        return render_template(
+            "profile.html",
+            user=db.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone(),
+            success="Your details were updated.",
+        )
+    return render_template("profile.html", user=user)
 
 
 @app.route("/dashboard")
@@ -292,6 +323,14 @@ def create_band():
     return render_template("create_band.html")
 
 
+@app.route("/band/<int:band_id>/setup/complete")
+@login_required
+def complete_band_setup(band_id):
+    if not is_band_admin(band_id, session["user_id"]):
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("band_admin", band_id=band_id))
+
+
 @app.route("/band/<int:band_id>/setup")
 @login_required
 def band_setup(band_id):
@@ -314,7 +353,8 @@ def band_setup(band_id):
     ).fetchall()
     players = db.execute(
         """
-        SELECT bm.*, u.name, u.email, u.phone
+        SELECT bm.*, u.name, u.email, u.phone,
+               COALESCE(NULLIF(bm.instruments_played, ''), u.instruments_played, '') AS instruments_played
         FROM band_memberships bm
         JOIN users u ON u.id = bm.user_id
         WHERE bm.band_id = ?
@@ -360,12 +400,24 @@ def add_player_to_band(band_id):
     if user is None:
         default_password = generate_password_hash("changeme123")
         cur = db.execute(
-            "INSERT INTO users (name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
-            (name, email, phone, default_password, datetime.utcnow().isoformat()),
+            """
+            INSERT INTO users (name, email, phone, instruments_played, password_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (name, email, phone, instruments, default_password, datetime.utcnow().isoformat()),
         )
         user_id = cur.lastrowid
     else:
         user_id = user["id"]
+        db.execute(
+            """
+            UPDATE users
+            SET phone = CASE WHEN ? <> '' THEN ? ELSE phone END,
+                instruments_played = CASE WHEN ? <> '' THEN ? ELSE instruments_played END
+            WHERE id = ?
+            """,
+            (phone, phone, instruments, instruments, user_id),
+        )
 
     db.execute(
         """
@@ -374,7 +426,7 @@ def add_player_to_band(band_id):
         ON CONFLICT(band_id, user_id)
         DO UPDATE SET instruments_played = excluded.instruments_played
         """,
-        (band_id, user_id, instruments),
+        (band_id, user_id, instruments or (user["instruments_played"] if user else "")),
     )
     db.commit()
     return jsonify({"ok": True})
@@ -444,7 +496,13 @@ def band_admin(band_id):
         (band_id,),
     ).fetchall()
     parts = db.execute("SELECT * FROM parts WHERE band_id = ? ORDER BY name", (band_id,)).fetchall()
-    return render_template("band_admin.html", band=band, gigs=gigs, players=players, parts=parts)
+    return render_template(
+        "band_admin.html",
+        band=band,
+        gigs=gigs,
+        players=[dict(player) for player in players],
+        parts=parts,
+    )
 
 
 @app.route("/api/band/<int:band_id>/gig", methods=["POST"])

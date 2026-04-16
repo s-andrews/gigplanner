@@ -2,7 +2,10 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2>Your gigs</h2>
-  <a class="btn btn-success" href="{{ url_for('create_band') }}">Create Band</a>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{{ url_for('profile') }}">Edit My Details</a>
+    <a class="btn btn-success" href="{{ url_for('create_band') }}">Create Band</a>
+  </div>
 </div>
 
 {% if gigs %}
