@@ -16,9 +16,12 @@
       </div>
       <ul class="list-group">
         {% for part in parts %}
-        <li class="list-group-item d-flex justify-content-between align-items-center">
-          <span>{{ part['name'] }}</span>
-          <small class="text-muted">{{ part['default_player_name'] or 'Unassigned' }}</small>
+        <li class="list-group-item d-flex justify-content-between align-items-center" data-part-id="{{ part['id'] }}">
+          <div>
+            <span>{{ part['name'] }}</span>
+            <small class="text-muted ms-2">{{ part['default_player_name'] or 'Unassigned' }}</small>
+          </div>
+          <button class="btn btn-sm btn-danger delete-part-btn">Delete Part</button>
         </li>
         {% endfor %}
       </ul>
@@ -38,15 +41,18 @@
 
       <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Name</th><th>Email</th><th>Instruments</th><th>Co-admin</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Instruments</th><th>Co-admin</th><th>Actions</th></tr></thead>
         <tbody>
           {% for player in players %}
-          <tr>
+          <tr data-user-id="{{ player['user_id'] }}">
             <td>{{ player['name'] }}</td>
             <td>{{ player['email'] }}</td>
             <td>{{ player['instruments_played'] }}</td>
             <td>
               <input class="form-check-input co-admin-toggle" type="checkbox" data-user-id="{{ player['user_id'] }}" {% if player['is_co_admin'] %}checked{% endif %}>
+            </td>
+            <td>
+              <button class="btn btn-sm btn-danger delete-player-btn">Delete Player</button>
             </td>
           </tr>
           {% endfor %}

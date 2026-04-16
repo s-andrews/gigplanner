@@ -43,6 +43,22 @@ document.querySelectorAll('.save-gig').forEach((btn) => {
   });
 });
 
+document.querySelectorAll('.delete-gig').forEach((btn) => {
+  btn.addEventListener('click', async (e) => {
+    const row = e.target.closest('tr');
+    const gigId = row.dataset.gigId;
+    const confirmed = window.confirm('Are you sure you want to delete this gig? This cannot be undone.');
+    if (!confirmed) return;
+
+    const res = await fetch(`/api/gig/${gigId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      alert('Delete failed');
+      return;
+    }
+    row.remove();
+  });
+});
+
 function playerOptions(selectedId) {
   const opts = ['<option value="">-- Unassigned --</option>'];
   players.forEach(p => {
@@ -89,6 +105,8 @@ async function loadParts(gigId) {
   container.querySelectorAll('.gp-del').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const gpId = e.target.closest('[data-gp-id]').dataset.gpId;
+      const confirmed = window.confirm('Are you sure you want to remove this part from the lineup?');
+      if (!confirmed) return;
       await fetch(`/api/gig/part/${gpId}`, {method: 'DELETE'});
       loadParts(gigId);
     });

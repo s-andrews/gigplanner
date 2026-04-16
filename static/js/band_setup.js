@@ -61,3 +61,35 @@ document.querySelectorAll('.default-part-select').forEach((el) => {
     e.target.dataset.selectedUserId = e.target.value || '';
   });
 });
+
+document.querySelectorAll('.delete-player-btn').forEach((btn) => {
+  btn.addEventListener('click', async (e) => {
+    const row = e.target.closest('tr');
+    const userId = row.dataset.userId;
+    const confirmed = window.confirm('Are you sure you want to delete this player from the band?');
+    if (!confirmed) return;
+
+    const res = await fetch(`/api/band/${bandId}/player/${userId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      alert('Could not delete player');
+      return;
+    }
+    location.reload();
+  });
+});
+
+document.querySelectorAll('.delete-part-btn').forEach((btn) => {
+  btn.addEventListener('click', async (e) => {
+    const item = e.target.closest('[data-part-id]');
+    const partId = item.dataset.partId;
+    const confirmed = window.confirm('Are you sure you want to delete this part from the default lineup?');
+    if (!confirmed) return;
+
+    const res = await fetch(`/api/band/${bandId}/part/${partId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      alert('Could not delete part');
+      return;
+    }
+    location.reload();
+  });
+});
