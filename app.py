@@ -234,7 +234,7 @@ def login():
         session.clear()
         session["user_id"] = user["id"]
         return redirect(url_for("dashboard"))
-    return render_template("login.html")
+    return render_template("login.html", show_navbar=False)
 
 
 @app.route("/logout")
