@@ -62,3 +62,32 @@ h2,
 h3 {
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
+
+.navbar-brand-logo {
+  height: 32px;
+  width: auto;
+}
+
+.welcome-screen {
+  min-height: calc(100vh - 3rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1rem 0 2rem;
+}
+
+.welcome-logo {
+  width: 60vw;
+  max-width: 100%;
+  height: auto;
+}
+
+.welcome-tagline {
+  margin-top: 1rem;
+}
+
+.welcome-actions {
+  margin-top: auto;
+  justify-content: center;
+}
