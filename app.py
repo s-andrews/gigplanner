@@ -113,7 +113,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             gig_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
-            status TEXT NOT NULL CHECK(status IN ('Available','Not Available','Unsure yet')),
+            status TEXT NOT NULL CHECK(status IN ('Available','Not Available','Unsure yet','Unanswered')),
             updated_at TEXT NOT NULL,
             UNIQUE(gig_id, user_id),
             FOREIGN KEY(gig_id) REFERENCES gigs(id) ON DELETE CASCADE,
@@ -124,6 +124,34 @@ def init_db():
     user_columns = {row[1] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
     if "instruments_played" not in user_columns:
         cur.execute("ALTER TABLE users ADD COLUMN instruments_played TEXT")
+
+    availability_sql_row = cur.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'availability'"
+    ).fetchone()
+    availability_sql = availability_sql_row[0] if availability_sql_row else ""
+    if "Unanswered" not in availability_sql:
+        cur.executescript(
+            """
+            ALTER TABLE availability RENAME TO availability_old;
+
+            CREATE TABLE availability (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                gig_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('Available','Not Available','Unsure yet','Unanswered')),
+                updated_at TEXT NOT NULL,
+                UNIQUE(gig_id, user_id),
+                FOREIGN KEY(gig_id) REFERENCES gigs(id) ON DELETE CASCADE,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            INSERT INTO availability (id, gig_id, user_id, status, updated_at)
+            SELECT id, gig_id, user_id, status, updated_at
+            FROM availability_old;
+
+            DROP TABLE availability_old;
+            """
+        )
     db.commit()
     db.close()
 
@@ -275,7 +303,7 @@ def dashboard():
 def update_availability(gig_id):
     user = current_user()
     status = request.json.get("status")
-    allowed = {"Available", "Not Available", "Unsure yet"}
+    allowed = {"Available", "Not Available", "Unsure yet", "Unanswered"}
     if status not in allowed:
         return jsonify({"ok": False, "error": "Invalid status"}), 400
 
@@ -483,7 +511,20 @@ def band_admin(band_id):
     db = get_db()
     band = db.execute("SELECT * FROM bands WHERE id = ?", (band_id,)).fetchone()
     gigs = db.execute(
-        "SELECT * FROM gigs WHERE band_id = ? ORDER BY gig_date DESC, start_time DESC", (band_id,)
+        """
+        SELECT g.*,
+               SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Available' THEN 1 ELSE 0 END) AS available_count,
+               SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Not Available' THEN 1 ELSE 0 END) AS not_available_count,
+               SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Unsure yet' THEN 1 ELSE 0 END) AS unsure_count,
+               SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Unanswered' THEN 1 ELSE 0 END) AS unanswered_count
+        FROM gigs g
+        LEFT JOIN band_memberships bm ON bm.band_id = g.band_id
+        LEFT JOIN availability av ON av.gig_id = g.id AND av.user_id = bm.user_id
+        WHERE g.band_id = ?
+        GROUP BY g.id
+        ORDER BY g.gig_date DESC, g.start_time DESC
+        """,
+        (band_id,),
     ).fetchall()
     players = db.execute(
         """
@@ -551,6 +592,24 @@ def create_gig(band_id):
             "INSERT INTO gig_parts (gig_id, part_name, assigned_user_id) VALUES (?, ?, ?)",
             (gig_id, row["name"], row["user_id"]),
         )
+
+    band_players = db.execute(
+        """
+        SELECT user_id
+        FROM band_memberships
+        WHERE band_id = ?
+        """,
+        (band_id,),
+    ).fetchall()
+    timestamp = datetime.utcnow().isoformat()
+    for player in band_players:
+        db.execute(
+            """
+            INSERT OR IGNORE INTO availability (gig_id, user_id, status, updated_at)
+            VALUES (?, ?, 'Unanswered', ?)
+            """,
+            (gig_id, player["user_id"], timestamp),
+        )
     db.commit()
     return jsonify({"ok": True})
 
@@ -612,6 +671,31 @@ def gig_parts(gig_id):
         (gig_id,),
     ).fetchall()
     return jsonify({"ok": True, "parts": [dict(r) for r in rows]})
+
+
+@app.route("/api/gig/<int:gig_id>/responses")
+@login_required
+def gig_responses(gig_id):
+    db = get_db()
+    gig = db.execute("SELECT * FROM gigs WHERE id = ?", (gig_id,)).fetchone()
+    if not gig or not is_band_admin(gig["band_id"], session["user_id"]):
+        return jsonify({"ok": False}), 403
+
+    rows = db.execute(
+        """
+        SELECT u.id AS user_id,
+               u.name AS player_name,
+               COALESCE(av.status, 'Unanswered') AS availability_status,
+               av.updated_at
+        FROM band_memberships bm
+        JOIN users u ON u.id = bm.user_id
+        LEFT JOIN availability av ON av.gig_id = ? AND av.user_id = bm.user_id
+        WHERE bm.band_id = ?
+        ORDER BY u.name
+        """,
+        (gig_id, gig["band_id"]),
+    ).fetchall()
+    return jsonify({"ok": True, "responses": [dict(r) for r in rows]})
 
 
 @app.route("/api/gig/<int:gig_id>/part", methods=["POST"])
