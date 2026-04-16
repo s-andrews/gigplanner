@@ -2,10 +2,10 @@
 {% block content %}
 <div class="p-4 p-md-5 text-light rounded-3">
   <p class="text-center"><img src="{{ url_for('static', filename='images/gig_planner_logo.png') }}"></p>
-  <p class="lead">Organise Gigs * Track Players and Deps</p>
+  <p class="lead text-center">Organise Gigs * Track Players and Deps</p>
   <div class="d-flex gap-2">
-    <a class="btn btn-secondary" href="{{ url_for('register') }}">Create Account</a>
-    <a class="btn btn-secondary" href="{{ url_for('login') }}">Log In</a>
+    <a class="btn btn-secondary btn-lg" href="{{ url_for('register') }}">Create Account</a>
+    <a class="btn btn-secondary btn-lg" href="{{ url_for('login') }}">Log In</a>
   </div>
 </div>
 {% endblock %}
