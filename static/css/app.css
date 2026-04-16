@@ -19,16 +19,42 @@ body::before {
   z-index: -1;
 }
 
-.card {
+.card,
+.list-group-item,
+.modal-content {
   border-radius: 0.75rem;
-  background-color: rgba(248, 249, 250, 0.94);
-  color: #212529;
+  background-color: rgba(15, 23, 42, 0.9);
+  color: #f8f9fa;
+  border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .list-group-item {
-  border-radius: 0.5rem !important;
   margin-bottom: 0.5rem;
-  background-color: rgba(248, 249, 250, 0.92);
+}
+
+.table {
+  --bs-table-bg: rgba(15, 23, 42, 0.72);
+  --bs-table-color: #f8f9fa;
+  --bs-table-border-color: rgba(148, 163, 184, 0.3);
+  --bs-table-striped-bg: rgba(30, 41, 59, 0.8);
+  --bs-table-striped-color: #f8f9fa;
+}
+
+.form-control,
+.form-select {
+  background-color: rgba(15, 23, 42, 0.8);
+  color: #f8f9fa;
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.form-control:focus,
+.form-select:focus {
+  background-color: rgba(15, 23, 42, 0.95);
+  color: #f8f9fa;
+}
+
+.text-muted {
+  color: #adb5bd !important;
 }
 
 h1,
