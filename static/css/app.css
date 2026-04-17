@@ -90,3 +90,7 @@ h3 {
   margin-top: auto;
   justify-content: center;
 }
+
+.form-control::placeholder {
+  color: #ced4da;
+}
