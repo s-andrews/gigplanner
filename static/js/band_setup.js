@@ -36,6 +36,10 @@ document.getElementById('add-player-btn')?.addEventListener('click', async () =>
     alert('Could not add player');
     return;
   }
+  document.getElementById('p-name').value = '';
+  document.getElementById('p-email').value = '';
+  document.getElementById('p-phone').value = '';
+  document.getElementById('p-inst').value = '';
   location.reload();
 });
 

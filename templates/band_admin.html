@@ -18,7 +18,7 @@
 
 <h3>Existing Gigs</h3>
 <div class="table-responsive mb-3">
-<table class="table table-striped align-middle" id="gigs-table">
+<table class="table table-striped align-middle admin-gigs-table" id="gigs-table">
   <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Location</th><th>Status</th><th>Responses</th><th>Actions</th></tr></thead>
   <tbody>
     {% for gig in gigs %}
@@ -33,16 +33,17 @@
           <option {% if gig['status']=='Confirmed' %}selected{% endif %}>Confirmed</option>
         </select>
       </td>
-      <td class="small text-nowrap">
-        {{ gig['available_count'] }} Available,
-        {{ gig['not_available_count'] }} Not Available,
-        {{ gig['unsure_count'] }} Not sure,
-        {{ gig['unanswered_count'] }} Unanswered
+      <td class="small">
+        <div class="response-summary admin-response-summary">
+          <span class="response-summary-item response-summary-item-available">{{ gig['available_count'] }} Available</span>
+          <span class="response-summary-item response-summary-item-not-available">{{ gig['not_available_count'] }} Not Available</span>
+          <span class="response-summary-item">{{ gig['unsure_count'] }} Not sure</span>
+          <span class="response-summary-item">{{ gig['unanswered_count'] }} Unanswered</span>
+        </div>
       </td>
-      <td>
-        <button class="btn btn-sm btn-secondary save-gig">Save</button>
+      <td class="admin-gig-actions">
         <button class="btn btn-sm btn-secondary manage-parts">Edit Lineup</button>
-        <button class="btn btn-sm btn-secondary view-responses">Responses</button>
+        <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Responses</a>
         <button class="btn btn-sm btn-danger delete-gig">Delete</button>
       </td>
     </tr>
@@ -74,16 +75,6 @@
   </div>
 </div>
 
-<div class="modal fade" id="responsesModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">Gig Responses</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <div id="responses-list"></div>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}

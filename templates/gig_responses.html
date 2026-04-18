@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h2 class="mb-1">Gig Responses</h2>
+    <div class="text-muted">{{ gig['band_name'] }} | {{ gig['gig_date'] }} | {{ gig['start_time'] }} - {{ gig['end_time'] }} | {{ gig['location'] }}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-secondary" href="{{ url_for('band_admin', band_id=band_id) }}">Back to Gig Admin</a>
+  </div>
+</div>
+
+<div class="card card-body">
+  <div class="response-summary mb-4">
+    <span class="response-summary-item response-summary-item-available" data-summary-key="available" data-count="{{ summary['available'] }}">{{ summary['available'] }} Available</span>
+    <span class="response-summary-item response-summary-item-not-available" data-summary-key="not_available" data-count="{{ summary['not_available'] }}">{{ summary['not_available'] }} Not Available</span>
+    <span class="response-summary-item" data-summary-key="unsure" data-count="{{ summary['unsure'] }}">{{ summary['unsure'] }} Unsure</span>
+    <span class="response-summary-item" data-summary-key="unanswered" data-count="{{ summary['unanswered'] }}">{{ summary['unanswered'] }} Not Answered</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-striped align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Response</th>
+          <th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for response in responses %}
+        <tr data-user-id="{{ response['user_id'] }}">
+          <td>{{ response['player_name'] }}</td>
+          <td>
+            <select class="form-select response-select response-select-{{ response['availability_status']|lower|replace(' ', '-') }}">
+              {% for option in response_options %}
+              <option value="{{ option }}" {% if response['availability_status'] == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="response-updated" data-updated-at="{{ response['updated_at'] or '' }}">
+            {{ response['updated_at'] or '-' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.GIG_ID={{ gig['id'] }};
+</script>
+<script src="{{ url_for('static', filename='js/gig_responses.js') }}"></script>
+{% endblock %}

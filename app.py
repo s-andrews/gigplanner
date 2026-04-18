@@ -280,7 +280,7 @@ def dashboard():
         LEFT JOIN availability av ON av.gig_id = g.id AND av.user_id = ?
         WHERE gp.assigned_user_id = ?
         GROUP BY g.id
-        ORDER BY g.gig_date DESC, g.start_time DESC
+        ORDER BY g.gig_date ASC, g.start_time ASC
         """,
         (user["id"], user["id"]),
     ).fetchall()
@@ -585,7 +585,7 @@ def band_admin(band_id):
         LEFT JOIN availability av ON av.gig_id = g.id AND av.user_id = bm.user_id
         WHERE g.band_id = ?
         GROUP BY g.id
-        ORDER BY g.gig_date DESC, g.start_time DESC
+        ORDER BY g.gig_date ASC, g.start_time ASC
         """,
         (band_id,),
     ).fetchall()
@@ -606,6 +606,66 @@ def band_admin(band_id):
         gigs=gigs,
         players=[dict(player) for player in players],
         parts=parts,
+    )
+
+
+@app.route("/band/<int:band_id>/gig/<int:gig_id>/responses")
+@login_required
+def gig_responses_page(band_id, gig_id):
+    uid = session["user_id"]
+    if not is_band_admin(band_id, uid):
+        return redirect(url_for("dashboard"))
+
+    db = get_db()
+    gig = db.execute(
+        """
+        SELECT g.*, b.name AS band_name
+        FROM gigs g
+        JOIN bands b ON b.id = g.band_id
+        WHERE g.id = ? AND g.band_id = ?
+        """,
+        (gig_id, band_id),
+    ).fetchone()
+    if not gig:
+        return redirect(url_for("band_admin", band_id=band_id))
+
+    responses = db.execute(
+        """
+        SELECT u.id AS user_id,
+               u.name AS player_name,
+               COALESCE(av.status, 'Unanswered') AS availability_status,
+               av.updated_at
+        FROM band_memberships bm
+        JOIN users u ON u.id = bm.user_id
+        LEFT JOIN availability av ON av.gig_id = ? AND av.user_id = bm.user_id
+        WHERE bm.band_id = ?
+        ORDER BY u.name
+        """,
+        (gig_id, band_id),
+    ).fetchall()
+    summary = {
+        "available": 0,
+        "not_available": 0,
+        "unsure": 0,
+        "unanswered": 0,
+    }
+    for response in responses:
+        status = response["availability_status"]
+        if status == "Available":
+            summary["available"] += 1
+        elif status == "Not Available":
+            summary["not_available"] += 1
+        elif status == "Unsure yet":
+            summary["unsure"] += 1
+        else:
+            summary["unanswered"] += 1
+    return render_template(
+        "gig_responses.html",
+        band_id=band_id,
+        gig=gig,
+        responses=responses,
+        response_options=["Unanswered", "Available", "Not Available", "Unsure yet"],
+        summary=summary,
     )
 
 
@@ -764,6 +824,40 @@ def gig_responses(gig_id):
         (gig_id, gig["band_id"]),
     ).fetchall()
     return jsonify({"ok": True, "responses": [dict(r) for r in rows]})
+
+
+@app.route("/api/gig/<int:gig_id>/response/<int:user_id>", methods=["POST"])
+@login_required
+def update_gig_response_for_player(gig_id, user_id):
+    db = get_db()
+    gig = db.execute("SELECT * FROM gigs WHERE id = ?", (gig_id,)).fetchone()
+    if not gig or not is_band_admin(gig["band_id"], session["user_id"]):
+        return jsonify({"ok": False}), 403
+
+    membership = db.execute(
+        "SELECT 1 FROM band_memberships WHERE band_id = ? AND user_id = ?",
+        (gig["band_id"], user_id),
+    ).fetchone()
+    if not membership:
+        return jsonify({"ok": False, "error": "Player not found"}), 404
+
+    status = request.json.get("status")
+    allowed = {"Available", "Not Available", "Unsure yet", "Unanswered"}
+    if status not in allowed:
+        return jsonify({"ok": False, "error": "Invalid status"}), 400
+
+    updated_at = datetime.utcnow().isoformat()
+    db.execute(
+        """
+        INSERT INTO availability (gig_id, user_id, status, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(gig_id, user_id)
+        DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at
+        """,
+        (gig_id, user_id, status, updated_at),
+    )
+    db.commit()
+    return jsonify({"ok": True, "updated_at": updated_at})
 
 
 @app.route("/api/gig/<int:gig_id>/part", methods=["POST"])

@@ -17,29 +17,44 @@ async function createGig() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload)
   });
-  if (res.ok) location.reload();
-  else alert('Could not create gig');
+  if (res.ok) {
+    document.getElementById('gig-date').value = '';
+    document.getElementById('start-time').value = '';
+    document.getElementById('end-time').value = '';
+    document.getElementById('location').value = '';
+    document.getElementById('status').value = 'Unconfirmed';
+    document.getElementById('fee-player').value = '';
+    document.getElementById('fee-band').value = '';
+    location.reload();
+  } else alert('Could not create gig');
 }
 
 document.getElementById('create-gig-btn')?.addEventListener('click', createGig);
 
-document.querySelectorAll('.save-gig').forEach((btn) => {
-  btn.addEventListener('click', async (e) => {
-    const row = e.target.closest('tr');
-    const gigId = row.dataset.gigId;
-    const payload = {
-      gig_date: row.querySelector('.fld-date').value,
-      start_time: row.querySelector('.fld-start').value,
-      end_time: row.querySelector('.fld-end').value,
-      location: row.querySelector('.fld-location').value,
-      status: row.querySelector('.fld-status').value,
-    };
-    const res = await fetch(`/api/gig/${gigId}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload)
+async function saveGigRow(row) {
+  const gigId = row.dataset.gigId;
+  const payload = {
+    gig_date: row.querySelector('.fld-date').value,
+    start_time: row.querySelector('.fld-start').value,
+    end_time: row.querySelector('.fld-end').value,
+    location: row.querySelector('.fld-location').value,
+    status: row.querySelector('.fld-status').value,
+  };
+  const res = await fetch(`/api/gig/${gigId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    alert('Could not save gig changes.');
+  }
+}
+
+document.querySelectorAll('#gigs-table tbody tr').forEach((row) => {
+  row.querySelectorAll('.fld-date, .fld-start, .fld-end, .fld-location, .fld-status').forEach((field) => {
+    field.addEventListener('change', async (e) => {
+      await saveGigRow(e.target.closest('tr'));
     });
-    alert(res.ok ? 'Saved' : 'Save failed');
   });
 });
 
@@ -134,42 +149,4 @@ document.getElementById('add-gig-part-btn')?.addEventListener('click', async () 
   });
   document.getElementById('new-gig-part-name').value = '';
   loadParts(activeGigId);
-});
-
-async function loadResponses(gigId) {
-  const res = await fetch(`/api/gig/${gigId}/responses`);
-  const data = await res.json();
-  const container = document.getElementById('responses-list');
-  if (!data.ok) {
-    container.innerHTML = '<div class="alert alert-danger">Could not load responses</div>';
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="table-responsive">
-      <table class="table table-sm table-striped align-middle mb-0">
-        <thead>
-          <tr><th>Player</th><th>Response</th><th>Updated</th></tr>
-        </thead>
-        <tbody>
-          ${data.responses.map((row) => `
-            <tr>
-              <td>${row.player_name}</td>
-              <td>${row.availability_status}</td>
-              <td>${row.updated_at ? new Date(row.updated_at).toLocaleString() : '-'}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-document.querySelectorAll('.view-responses').forEach((btn) => {
-  btn.addEventListener('click', (e) => {
-    const gigId = e.target.closest('tr').dataset.gigId;
-    loadResponses(gigId);
-    const modal = new bootstrap.Modal(document.getElementById('responsesModal'));
-    modal.show();
-  });
 });
