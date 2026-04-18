@@ -13,6 +13,34 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
 
+def ordinal(day):
+    if 10 <= day % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    return f"{day}{suffix}"
+
+
+@app.template_filter("human_date")
+def human_date(value):
+    if not value:
+        return ""
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return value
+    weekday = {
+        0: "Mon",
+        1: "Tues",
+        2: "Weds",
+        3: "Thurs",
+        4: "Fri",
+        5: "Sat",
+        6: "Sun",
+    }[parsed.weekday()]
+    return f"{weekday} {ordinal(parsed.day)} {parsed.strftime('%B %Y')}"
+
+
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DATABASE)
@@ -273,7 +301,7 @@ def dashboard():
         """
         SELECT g.*, b.name AS band_name,
                GROUP_CONCAT(gp.part_name, ', ') AS parts,
-               av.status AS availability_status
+               COALESCE(av.status, 'Unanswered') AS availability_status
         FROM gig_parts gp
         JOIN gigs g ON g.id = gp.gig_id
         JOIN bands b ON b.id = g.band_id

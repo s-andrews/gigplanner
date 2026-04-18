@@ -10,11 +10,11 @@
 {% if gigs %}
 <div class="list-group mb-4">
   {% for gig in gigs %}
-  <div class="list-group-item">
+  <div class="list-group-item dashboard-gig-card dashboard-gig-card-{{ gig['availability_status']|lower|replace(' ', '-') }}">
     <div class="d-flex flex-wrap justify-content-between gap-2">
       <div>
         <h5 class="mb-1">{{ gig['band_name'] }} - {{ gig['location'] }}</h5>
-        <div>{{ gig['gig_date'] }} | {{ gig['start_time'] }} - {{ gig['end_time'] }}</div>
+        <div>{{ gig['gig_date']|human_date }} | {{ gig['start_time'] }} - {{ gig['end_time'] }}</div>
         <small class="text-muted">Your parts: {{ gig['parts'] or '-' }}</small>
       </div>
       <div class="availability-control" data-gig-id="{{ gig['id'] }}">
