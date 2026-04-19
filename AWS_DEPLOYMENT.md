@@ -19,28 +19,28 @@ Because Gig Planner currently uses SQLite, it is best deployed as a single appli
 
 This application can be deployed on AWS in two sensible ways.
 
-### Option 1: Single EC2 instance exposed directly to the internet
+### Option 1: Single Amazon Lightsail instance exposed directly to the internet
 
 Use this if:
 
 - you will only run one application server
 - you want the simplest and lowest-cost setup
-- you are happy to terminate HTTPS directly on the EC2 instance
+- you are happy to terminate HTTPS directly on the server
 
 Typical stack:
 
-- Amazon EC2
-- Amazon EBS
+- Amazon Lightsail instance
+- Lightsail static IP
 - Nginx
 - Gunicorn
-- Route 53 or external DNS
+- Lightsail DNS zone, Route 53, or external DNS
 - Let's Encrypt for TLS
 - Amazon SES for email
 
 Traffic flow:
 
 ```text
-User -> DNS -> EC2 (Nginx HTTPS) -> Gunicorn -> Flask
+User -> DNS -> Lightsail instance (Nginx HTTPS) -> Gunicorn -> Flask
 ```
 
 ### Option 2: Single EC2 instance behind an Application Load Balancer
@@ -73,7 +73,7 @@ User -> DNS -> ALB (HTTPS) -> EC2 (HTTP) -> Gunicorn -> Flask
 
 For this app as it exists today, the recommended default is:
 
-- `Single EC2 exposed directly to the internet`
+- `Single Amazon Lightsail instance exposed directly to the internet`
 
 Reasons:
 
@@ -92,15 +92,21 @@ Choose the ALB option if:
 
 Both deployment options use the same core AWS services:
 
-- `Amazon EC2` for the app host
-- `Amazon EBS` for persistent disk storage
 - `Amazon SES` for outbound email
 - `Amazon Route 53` optionally for DNS hosting
 - `IAM` for access control
 - `CloudWatch` optionally for monitoring
 
+For the single-server option, use:
+
+- `Amazon Lightsail` for the app host
+- Lightsail instance disk storage
+- Lightsail static IP
+
 Only the load-balanced option additionally uses:
 
+- `Amazon EC2`
+- `Amazon EBS`
 - `Application Load Balancer`
 - `AWS Certificate Manager`
 
@@ -162,32 +168,37 @@ Notes:
 
 ## Networking
 
-For either option you need:
+For the Lightsail option:
+
+- Lightsail handles the underlying networking for the instance
+- you mainly work with the Lightsail firewall, static IP, and DNS settings
+
+For the EC2 + ALB option you need:
 
 - a VPC
 - at least one public subnet
 - an Internet Gateway
 - route tables allowing internet access
 
-Because this is a single-host deployment, a simple VPC layout is enough.
+Because this is a single-host deployment, a simple network layout is enough in either case.
 
 ## Security Groups
 
-### Direct-to-EC2 option
+### Lightsail option
 
-Use one EC2 security group.
+Use the Lightsail networking/firewall rules.
 
 Allow inbound:
 
 - TCP 22 from your admin IP only
-- TCP 80 from `0.0.0.0/0`
-- TCP 443 from `0.0.0.0/0`
+- TCP 80 from anywhere
+- TCP 443 from anywhere
 
 Allow outbound:
 
-- all traffic, or at least internet access for package installs and SES SMTP
+- general internet access for package installs and SES SMTP
 
-### ALB option
+### EC2 + ALB option
 
 Create two security groups.
 
@@ -208,6 +219,164 @@ EC2 security group inbound:
 EC2 security group outbound:
 
 - all traffic, or at least internet access for updates and SES SMTP
+
+## Option 1: Lightsail Single-Server Deployment
+
+This is the recommended option for this app today.
+
+### Create The Lightsail Instance
+
+In Lightsail:
+
+- create a Linux instance
+- choose a current LTS or supported distribution image
+- pick a small plan suitable for Flask + SQLite
+
+A typical starting point is a small Linux instance with enough disk for:
+
+- the app code
+- `gigplanner.db`
+- logs
+- backups
+
+### Attach A Static IP
+
+After creating the Lightsail instance:
+
+- allocate a Lightsail static IP
+- attach it to the instance
+
+This is important because the default public IP can change when the instance is stopped and started.
+
+### Lightsail Firewall
+
+In the Lightsail networking/firewall settings, allow:
+
+- TCP 22 from your admin IP only
+- TCP 80 from anywhere
+- TCP 443 from anywhere
+
+### Install The Application On Lightsail
+
+SSH into the instance and install dependencies.
+
+On a typical Linux image:
+
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip nginx
+```
+
+If you use an Amazon Linux based image instead:
+
+```bash
+sudo dnf update -y
+sudo dnf install -y git python3 python3-pip nginx
+python3 -m venv --help >/dev/null || sudo dnf install -y python3-virtualenv
+```
+
+Create the service user:
+
+```bash
+sudo useradd --system --create-home --home-dir /opt/gigplanner --shell /sbin/nologin gigplanner
+```
+
+Clone or copy the application:
+
+```bash
+sudo -u gigplanner git clone https://your-repository-url /opt/gigplanner/app
+cd /opt/gigplanner/app
+sudo -u gigplanner python3 -m venv venv
+sudo -u gigplanner ./venv/bin/pip install --upgrade pip
+sudo -u gigplanner ./venv/bin/pip install -r requirements.txt
+sudo -u gigplanner ./venv/bin/pip install gunicorn
+```
+
+### Lightsail DNS
+
+You have three valid DNS approaches for the Lightsail option:
+
+- use a Lightsail DNS zone
+- use Route 53
+- keep your existing external DNS provider
+
+If you use Lightsail DNS:
+
+- create a DNS zone for the domain in Lightsail
+- point the domain registrar to the Lightsail name servers
+- create `A` records pointing to the Lightsail static IP
+
+If you use Route 53:
+
+- create a hosted zone in Route 53
+- point the registrar to Route 53 name servers
+- create `A` records pointing to the Lightsail static IP
+
+If you keep external DNS:
+
+- create `A` records for the root domain and `www` pointing to the Lightsail static IP
+
+### HTTPS On Lightsail
+
+For the single Lightsail server option, use Let's Encrypt on the instance.
+
+Install certbot:
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+```
+
+or on Amazon Linux based images:
+
+```bash
+sudo dnf install -y certbot python3-certbot-nginx
+```
+
+Configure Nginx first for HTTP:
+
+```nginx
+server {
+    listen 80;
+    server_name gigplanner.uk www.gigplanner.uk;
+
+    location /static/ {
+        alias /opt/gigplanner/app/static/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+Then request the certificate:
+
+```bash
+sudo certbot --nginx -d gigplanner.uk -d www.gigplanner.uk
+```
+
+This will configure Nginx for HTTPS and redirect HTTP to HTTPS.
+
+### Pros Of Lightsail
+
+- simpler than EC2 + ALB
+- lower cost
+- a strong fit for a small single-host Flask app
+- static IP support is built in
+
+### Cons Of Lightsail
+
+- less flexible than the full EC2 + ALB architecture
+- not the best fit if you later need multiple app servers
+- ACM/ALB style TLS termination is not part of this path
+
+## Option 2: EC2 Behind An Application Load Balancer
 
 ## EC2 Instance Setup
 
@@ -308,88 +477,9 @@ sudo systemctl status gigplanner
 
 For both deployment options, Nginx should reverse proxy to Gunicorn.
 
+For the Lightsail option, Nginx should listen on HTTP and HTTPS.
+
 For the ALB option, Nginx can listen on HTTP only.
-
-For the direct-to-EC2 option, Nginx should listen on both HTTP and HTTPS.
-
-## Option 1: Direct Internet Exposure On EC2
-
-This is the simplest deployment.
-
-### Public IP Addressing
-
-Allocate and associate an Elastic IP to the EC2 instance.
-
-Then point DNS at that Elastic IP:
-
-- `A` record for `gigplanner.uk`
-- optional `A` record for `www.gigplanner.uk`
-
-If your DNS provider supports CNAME flattening or ALIAS records, you can use those patterns where needed.
-
-### HTTPS For Direct EC2
-
-For direct public EC2 hosting, the simplest certificate choice is usually Let's Encrypt on the instance.
-
-Install certbot on Amazon Linux:
-
-```bash
-sudo dnf install -y certbot python3-certbot-nginx
-```
-
-Create an initial Nginx site:
-
-```nginx
-server {
-    listen 80;
-    server_name gigplanner.uk www.gigplanner.uk;
-
-    location /static/ {
-        alias /opt/gigplanner/app/static/;
-        expires 7d;
-        add_header Cache-Control "public";
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-Enable Nginx:
-
-```bash
-sudo nginx -t
-sudo systemctl enable nginx
-sudo systemctl restart nginx
-```
-
-Then request a certificate:
-
-```bash
-sudo certbot --nginx -d gigplanner.uk -d www.gigplanner.uk
-```
-
-This will update Nginx for HTTPS automatically.
-
-### Pros Of Direct EC2
-
-- lower cost
-- fewer AWS resources
-- simpler to understand
-- a good match for a single-host SQLite app
-
-### Cons Of Direct EC2
-
-- TLS is managed on the instance
-- no ALB layer for future scaling
-- less flexibility if architecture changes later
-
-## Option 2: EC2 Behind An Application Load Balancer
 
 This is the more AWS-native HTTPS setup.
 
@@ -583,10 +673,10 @@ The app stores data in:
 gigplanner.db
 ```
 
-Because that file is local to the EC2 instance:
+Because that file is local to the application host:
 
-- use EBS-backed storage
-- take regular EBS snapshots
+- use persistent Lightsail instance storage or EBS-backed EC2 storage, depending on the option you choose
+- take regular snapshots
 - back up before deployments
 
 Manual backup example:
@@ -600,9 +690,9 @@ cp gigplanner.db gigplanner.db.backup-$(date +%F-%H%M%S)
 
 Recommended:
 
-- CloudWatch alarm on EC2 status checks
+- CloudWatch or Lightsail instance monitoring
 - CloudWatch alarm on CPU
-- EBS snapshot schedule
+- snapshot schedule
 - CloudWatch alarm on ALB unhealthy targets if using the ALB option
 
 Useful commands:
@@ -633,15 +723,15 @@ sudo nginx -t
 
 ## Cost Guidance
 
-### Direct-to-EC2 option
+### Lightsail option
 
 Main AWS costs:
 
-- EC2
-- EBS
+- Lightsail instance plan
+- Lightsail static IP
 - snapshots
 - SES
-- optional Route 53
+- optional Route 53 or Lightsail DNS
 
 This is the cheaper option.
 
@@ -662,7 +752,7 @@ This is more expensive but gives a cleaner AWS edge setup.
 
 For Gig Planner in its current form, the most practical AWS deployment is:
 
-- `single EC2 instance directly exposed to the internet`
+- `single Amazon Lightsail instance directly exposed to the internet`
 - `Nginx + Gunicorn on the instance`
 - `Let's Encrypt for HTTPS`
 - `Amazon SES for email`
