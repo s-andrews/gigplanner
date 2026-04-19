@@ -330,7 +330,7 @@ def register():
             if existing_user and not existing_user["password_hash"]:
                 return render_template(
                     "register.html",
-                    error="An account with that email has already been added. Use Reset your password to claim it.",
+                    error="An account with that email has already been added. Go to Login and Reset your password to claim it.",
                 )
             return render_template("register.html", error="An account with that email already exists.")
         db.execute(
