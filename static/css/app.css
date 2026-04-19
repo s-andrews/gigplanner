@@ -95,6 +95,13 @@ h3 {
   color: #ced4da;
 }
 
+.light-link,
+.light-link:visited,
+.light-link:hover,
+.light-link:active {
+  color: #f8f9fa;
+}
+
 .response-summary {
   display: flex;
   flex-wrap: wrap;

@@ -1,9 +1,12 @@
 import os
 import sqlite3
+import smtplib
 from datetime import datetime
+from email.message import EmailMessage
 from functools import wraps
 
 from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -11,6 +14,14 @@ DATABASE = os.path.join(BASE_DIR, "gigplanner.db")
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+app.config["SMTP_SERVER"] = os.environ.get("SMTP_SERVER", "localhost")
+app.config["SMTP_PORT"] = int(os.environ.get("SMTP_PORT", "25"))
+app.config["SMTP_USERNAME"] = os.environ.get("SMTP_USERNAME", "")
+app.config["SMTP_PASSWORD"] = os.environ.get("SMTP_PASSWORD", "")
+app.config["SMTP_USE_TLS"] = os.environ.get("SMTP_USE_TLS", "").lower() in {"1", "true", "yes"}
+app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", "noreply@gigplanner.uk")
+app.config["BASE_URL"] = os.environ.get("BASE_URL", "https://gigplanner.uk")
+app.config["PASSWORD_RESET_MAX_AGE"] = int(os.environ.get("PASSWORD_RESET_MAX_AGE", "86400"))
 
 
 def ordinal(day):
@@ -68,7 +79,7 @@ def init_db():
             email TEXT NOT NULL UNIQUE,
             phone TEXT,
             instruments_played TEXT,
-            password_hash TEXT NOT NULL,
+            password_hash TEXT,
             created_at TEXT NOT NULL
         );
 
@@ -152,6 +163,36 @@ def init_db():
     user_columns = {row[1] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
     if "instruments_played" not in user_columns:
         cur.execute("ALTER TABLE users ADD COLUMN instruments_played TEXT")
+    users_sql_row = cur.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
+    ).fetchone()
+    users_sql = users_sql_row[0] if users_sql_row else ""
+    if "password_hash TEXT NOT NULL" in users_sql:
+        cur.executescript(
+            """
+            PRAGMA foreign_keys = OFF;
+
+            ALTER TABLE users RENAME TO users_old;
+
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                phone TEXT,
+                instruments_played TEXT,
+                password_hash TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            INSERT INTO users (id, name, email, phone, instruments_played, password_hash, created_at)
+            SELECT id, name, email, phone, instruments_played, password_hash, created_at
+            FROM users_old;
+
+            DROP TABLE users_old;
+
+            PRAGMA foreign_keys = ON;
+            """
+        )
 
     availability_sql_row = cur.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'availability'"
@@ -221,6 +262,51 @@ def inject_user():
     return {"current_user": user, "current_band": current_band}
 
 
+def get_reset_serializer():
+    return URLSafeTimedSerializer(app.config["SECRET_KEY"])
+
+
+def generate_password_reset_token(user):
+    return get_reset_serializer().dumps({"user_id": user["id"], "email": user["email"]}, salt="password-reset")
+
+
+def load_password_reset_token(token):
+    data = get_reset_serializer().loads(
+        token,
+        salt="password-reset",
+        max_age=app.config["PASSWORD_RESET_MAX_AGE"],
+    )
+    return data
+
+
+def send_email(subject, recipients, body):
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = app.config["MAIL_FROM"]
+    message["To"] = ", ".join(recipients)
+    message.set_content(body)
+
+    with smtplib.SMTP(app.config["SMTP_SERVER"], app.config["SMTP_PORT"]) as smtp:
+        if app.config["SMTP_USE_TLS"]:
+            smtp.starttls()
+        if app.config["SMTP_USERNAME"]:
+            smtp.login(app.config["SMTP_USERNAME"], app.config["SMTP_PASSWORD"])
+        smtp.send_message(message)
+
+
+def send_password_reset_email(user):
+    token = generate_password_reset_token(user)
+    reset_link = f"{app.config['BASE_URL'].rstrip('/')}{url_for('reset_password', token=token)}"
+    body = (
+        f"Hi {user['name']},\n\n"
+        "A password reset was requested for your Gig Planner account.\n\n"
+        f"Use this link to set your password:\n{reset_link}\n\n"
+        "If you did not request this, you can ignore this email.\n\n"
+        "If you have any problems, please email contact@gigplanner.uk.\n"
+    )
+    send_email("Gig Planner password reset", [user["email"]], body)
+
+
 @app.route("/")
 def index():
     if session.get("user_id"):
@@ -240,6 +326,12 @@ def register():
         db = get_db()
         exists = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
         if exists:
+            existing_user = db.execute("SELECT password_hash FROM users WHERE id = ?", (exists["id"],)).fetchone()
+            if existing_user and not existing_user["password_hash"]:
+                return render_template(
+                    "register.html",
+                    error="An account with that email has already been added. Use Reset your password to claim it.",
+                )
             return render_template("register.html", error="An account with that email already exists.")
         db.execute(
             "INSERT INTO users (name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -252,17 +344,113 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    success_message = None
+    if request.args.get("reset") == "success":
+        success_message = "Your password has been set. You can now log in."
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         db = get_db()
         user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        if not user or not check_password_hash(user["password_hash"], password):
-            return render_template("login.html", error="Invalid email or password.")
+        if not user:
+            return render_template("login.html", error="Invalid email or password.", show_navbar=False)
+        if not user["password_hash"]:
+            return render_template(
+                "login.html",
+                error="This account has not been claimed yet. Use Reset your password to set a password.",
+                show_navbar=False,
+            )
+        if not check_password_hash(user["password_hash"], password):
+            return render_template("login.html", error="Invalid email or password.", show_navbar=False)
         session.clear()
         session["user_id"] = user["id"]
         return redirect(url_for("dashboard"))
-    return render_template("login.html", show_navbar=False)
+    return render_template("login.html", show_navbar=False, success=success_message)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        try:
+            if user:
+                send_password_reset_email(user)
+        except Exception:
+            return render_template(
+                "forgot_password.html",
+                error="We could not send the reset email right now. Please try again later.",
+                email=email,
+                show_navbar=False,
+            )
+        return render_template(
+            "forgot_password.html",
+            success=(
+                "If we found an account for that email, we have sent a reset link so you can set your password."
+            ),
+            show_navbar=False,
+        )
+    return render_template("forgot_password.html", show_navbar=False)
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    try:
+        data = load_password_reset_token(token)
+    except SignatureExpired:
+        return render_template(
+            "reset_password.html",
+            error="This password reset link has expired. Please request a new one.",
+            invalid_token=True,
+            show_navbar=False,
+        )
+    except BadSignature:
+        return render_template(
+            "reset_password.html",
+            error="This password reset link is invalid. Please request a new one.",
+            invalid_token=True,
+            show_navbar=False,
+        )
+
+    db = get_db()
+    user = db.execute(
+        "SELECT * FROM users WHERE id = ? AND email = ?",
+        (data["user_id"], data["email"]),
+    ).fetchone()
+    if not user:
+        return render_template(
+            "reset_password.html",
+            error="This password reset link is no longer valid. Please request a new one.",
+            invalid_token=True,
+            show_navbar=False,
+        )
+
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        if not password:
+            return render_template(
+                "reset_password.html",
+                error="Please enter a password.",
+                token=token,
+                show_navbar=False,
+            )
+        if password != confirm_password:
+            return render_template(
+                "reset_password.html",
+                error="The passwords do not match.",
+                token=token,
+                show_navbar=False,
+            )
+        db.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (generate_password_hash(password), user["id"]),
+        )
+        db.commit()
+        return redirect(url_for("login", reset="success"))
+
+    return render_template("reset_password.html", token=token, show_navbar=False)
 
 
 @app.route("/logout")
@@ -471,13 +659,12 @@ def add_player_to_band(band_id):
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
     if user is None:
-        default_password = generate_password_hash("changeme123")
         cur = db.execute(
             """
             INSERT INTO users (name, email, phone, instruments_played, password_hash, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (name, email, phone, instruments, default_password, datetime.utcnow().isoformat()),
+            (name, email, phone, instruments, None, datetime.utcnow().isoformat()),
         )
         user_id = cur.lastrowid
     else:
