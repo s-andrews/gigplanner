@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import smtplib
-from datetime import datetime
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from functools import wraps
 
@@ -22,6 +22,10 @@ app.config["SMTP_USE_TLS"] = os.environ.get("SMTP_USE_TLS", "").lower() in {"1",
 app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", "noreply@gigplanner.uk")
 app.config["BASE_URL"] = os.environ.get("BASE_URL", "https://gigplanner.uk")
 app.config["PASSWORD_RESET_MAX_AGE"] = int(os.environ.get("PASSWORD_RESET_MAX_AGE", "86400"))
+
+
+def utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 
 def ordinal(day):
@@ -335,7 +339,7 @@ def register():
             return render_template("register.html", error="An account with that email already exists.")
         db.execute(
             "INSERT INTO users (name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
-            (name, email, phone, generate_password_hash(password), datetime.utcnow().isoformat()),
+            (name, email, phone, generate_password_hash(password), utc_now_iso()),
         )
         db.commit()
         return redirect(url_for("login"))
@@ -537,7 +541,7 @@ def update_availability(gig_id):
         ON CONFLICT(gig_id, user_id)
         DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at
         """,
-        (gig_id, user["id"], status, datetime.utcnow().isoformat()),
+        (gig_id, user["id"], status, utc_now_iso()),
     )
     db.commit()
     return jsonify({"ok": True})
@@ -554,7 +558,7 @@ def create_band():
         uid = session["user_id"]
         cur = db.execute(
             "INSERT INTO bands (name, created_by, created_at) VALUES (?, ?, ?)",
-            (name, uid, datetime.utcnow().isoformat()),
+            (name, uid, utc_now_iso()),
         )
         band_id = cur.lastrowid
         db.execute("INSERT INTO band_admins (band_id, user_id) VALUES (?, ?)", (band_id, uid))
@@ -664,7 +668,7 @@ def add_player_to_band(band_id):
             INSERT INTO users (name, email, phone, instruments_played, password_hash, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (name, email, phone, instruments, None, datetime.utcnow().isoformat()),
+            (name, email, phone, instruments, None, utc_now_iso()),
         )
         user_id = cur.lastrowid
     else:
@@ -911,7 +915,7 @@ def create_gig(band_id):
             data.get("fee_per_player") or None,
             data.get("fee_for_band") or None,
             data["status"],
-            datetime.utcnow().isoformat(),
+            utc_now_iso(),
         ),
     )
     gig_id = cur.lastrowid
@@ -939,7 +943,7 @@ def create_gig(band_id):
         """,
         (band_id,),
     ).fetchall()
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = utc_now_iso()
     for player in band_players:
         db.execute(
             """
@@ -1061,7 +1065,7 @@ def update_gig_response_for_player(gig_id, user_id):
     if status not in allowed:
         return jsonify({"ok": False, "error": "Invalid status"}), 400
 
-    updated_at = datetime.utcnow().isoformat()
+    updated_at = utc_now_iso()
     db.execute(
         """
         INSERT INTO availability (gig_id, user_id, status, updated_at)
