@@ -1,56 +1,63 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2>Your Gigs</h2>
   <div class="d-flex gap-2">
     <a class="btn btn-success" href="{{ url_for('create_band') }}">Create a New Band</a>
   </div>
 </div>
 
-{% if gigs %}
-<div class="list-group mb-4">
-  {% for gig in gigs %}
-  <div class="list-group-item dashboard-gig-card dashboard-gig-card-{{ gig['availability_status']|lower|replace(' ', '-') }}">
-    <div class="d-flex flex-wrap justify-content-between gap-2">
-      <div>
-        <h5 class="mb-1">{{ gig['band_name'] }} - {{ gig['location'] }}</h5>
-        <div>{{ gig['gig_date']|human_date }} | {{ gig['start_time'] }} - {{ gig['end_time'] }}</div>
-        <small class="text-muted">Your parts: {{ gig['parts'] or '-' }}</small>
+<div class="row g-4">
+  <div class="{% if admin_bands %}col-lg-8{% else %}col-12{% endif %}">
+    {% if gigs %}
+    <h2>Your Gigs</h2>
+    <div class="list-group mb-4 mb-lg-0">
+      {% for gig in gigs %}
+      <div class="list-group-item dashboard-gig-card dashboard-gig-card-{{ gig['availability_status']|lower|replace(' ', '-') }}">
+        <div class="d-flex flex-wrap justify-content-between gap-2">
+          <div>
+            <h5 class="mb-1">{{ gig['band_name'] }} - {{ gig['location'] }}</h5>
+            <div>{{ gig['gig_date']|human_date }} | {{ gig['start_time'] }} - {{ gig['end_time'] }}</div>
+            <small class="text-muted">Your parts: {{ gig['parts'] or '-' }}</small>
+          </div>
+          <div class="availability-control" data-gig-id="{{ gig['id'] }}">
+            <label class="form-label mb-0">Availability</label>
+            <select class="form-select form-select-sm availability-select" style="min-width:160px;">
+              {% for option in ['Unanswered','Available','Not Available','Unsure yet'] %}
+              <option value="{{ option }}" {% if gig['availability_status']==option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
       </div>
-      <div class="availability-control" data-gig-id="{{ gig['id'] }}">
-        <label class="form-label mb-0">Availability</label>
-        <select class="form-select form-select-sm availability-select" style="min-width:160px;">
-          {% for option in ['Unanswered','Available','Not Available','Unsure yet'] %}
-          <option value="{{ option }}" {% if gig['availability_status']==option %}selected{% endif %}>{{ option }}</option>
-          {% endfor %}
-        </select>
-      </div>
+      {% endfor %}
     </div>
+    {% else %}
+    <div class="alert alert-info mb-0">No gigs assigned yet.</div>
+    {% endif %}
   </div>
-  {% endfor %}
-</div>
-{% else %}
-<div class="alert alert-info">No gigs assigned yet.</div>
-{% endif %}
 
-<h3>Band Admin</h3>
-{% if admin_bands %}
-<div class="row g-3">
-  {% for band in admin_bands %}
-  <div class="col-md-6">
-    <div class="card card-body">
-      <h5>{{ band['name'] }}</h5>
-      <div class="d-flex gap-2">
-        <a class="btn btn-secondary btn-sm" href="{{ url_for('band_admin', band_id=band['id']) }}">Gig Admin</a>
-        <a class="btn btn-secondary btn-sm" href="{{ url_for('band_setup', band_id=band['id']) }}">Band Setup</a>
+  {% if admin_bands %}
+  <div class="col-lg-4">
+    <h2>Band Admin</h2>
+    <div class="row g-3">
+      {% for band in admin_bands %}
+      <div class="col-12">
+        <div class="card card-body">
+          <h4>{{ band['name'] }}</h4>
+          <div class="d-flex gap-2">
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('band_admin', band_id=band['id']) }}">Gig Admin</a>
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('band_setup', band_id=band['id']) }}">Band Setup</a>
+          </div>
+        </div>
       </div>
+      {% endfor %}
     </div>
   </div>
-  {% endfor %}
-</div>
 {% else %}
+<h3 class="mt-4">Band Admin</h3>
 <div class="alert alert-secondary">You are not an admin for any bands yet.</div>
 {% endif %}
+</div>
 {% endblock %}
 
 {% block scripts %}
