@@ -95,6 +95,14 @@ h3 {
   color: #ced4da;
 }
 
+.profile-readonly[disabled] {
+  background-color: rgba(30, 41, 59, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.28);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
 .light-link,
 .light-link:visited,
 .light-link:hover,

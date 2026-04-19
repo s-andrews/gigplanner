@@ -1,11 +1,12 @@
 import os
+import secrets
 import sqlite3
 import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from functools import wraps
 
-from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -26,6 +27,20 @@ app.config["PASSWORD_RESET_MAX_AGE"] = int(os.environ.get("PASSWORD_RESET_MAX_AG
 
 def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+def validate_password_complexity(password):
+    if len(password) < 12:
+        return "Password must be at least 12 characters long."
+    if not any(char.islower() for char in password):
+        return "Password must include at least one lowercase letter."
+    if not any(char.isupper() for char in password):
+        return "Password must include at least one uppercase letter."
+    if not any(char.isdigit() for char in password):
+        return "Password must include at least one number."
+    if not any(not char.isalnum() for char in password):
+        return "Password must include at least one special character."
+    return None
 
 
 def ordinal(day):
@@ -84,6 +99,7 @@ def init_db():
             phone TEXT,
             instruments_played TEXT,
             password_hash TEXT,
+            calendar_token TEXT UNIQUE,
             created_at TEXT NOT NULL
         );
 
@@ -167,6 +183,8 @@ def init_db():
     user_columns = {row[1] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
     if "instruments_played" not in user_columns:
         cur.execute("ALTER TABLE users ADD COLUMN instruments_played TEXT")
+    if "calendar_token" not in user_columns:
+        cur.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
     users_sql_row = cur.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
     ).fetchone()
@@ -185,11 +203,12 @@ def init_db():
                 phone TEXT,
                 instruments_played TEXT,
                 password_hash TEXT,
+                calendar_token TEXT UNIQUE,
                 created_at TEXT NOT NULL
             );
 
-            INSERT INTO users (id, name, email, phone, instruments_played, password_hash, created_at)
-            SELECT id, name, email, phone, instruments_played, password_hash, created_at
+            INSERT INTO users (id, name, email, phone, instruments_played, password_hash, calendar_token, created_at)
+            SELECT id, name, email, phone, instruments_played, password_hash, calendar_token, created_at
             FROM users_old;
 
             DROP TABLE users_old;
@@ -247,6 +266,24 @@ def current_user():
     return db.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
 
 
+def generate_calendar_token():
+    return secrets.token_urlsafe(32)
+
+
+def ensure_calendar_token(user_id):
+    db = get_db()
+    user = db.execute("SELECT calendar_token FROM users WHERE id = ?", (user_id,)).fetchone()
+    if user and user["calendar_token"]:
+        return user["calendar_token"]
+
+    token = generate_calendar_token()
+    while db.execute("SELECT 1 FROM users WHERE calendar_token = ?", (token,)).fetchone():
+        token = generate_calendar_token()
+    db.execute("UPDATE users SET calendar_token = ? WHERE id = ?", (token, user_id))
+    db.commit()
+    return token
+
+
 def is_band_admin(band_id, user_id):
     db = get_db()
     row = db.execute(
@@ -300,7 +337,7 @@ def send_email(subject, recipients, body):
 
 def send_password_reset_email(user):
     token = generate_password_reset_token(user)
-    reset_link = f"{app.config['BASE_URL'].rstrip('/')}{url_for('reset_password', token=token)}"
+    reset_link = public_url(url_for("reset_password", token=token))
     body = (
         f"Hi {user['name']},\n\n"
         "A password reset was requested for your Gig Planner account.\n\n"
@@ -309,6 +346,23 @@ def send_password_reset_email(user):
         "If you have any problems, please email contact@gigplanner.uk.\n"
     )
     send_email("Gig Planner password reset", [user["email"]], body)
+
+
+def ical_escape(value):
+    if value is None:
+        return ""
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace(";", r"\;")
+        .replace(",", r"\,")
+        .replace("\r\n", r"\n")
+        .replace("\n", r"\n")
+    )
+
+
+def public_url(path):
+    return f"{app.config['BASE_URL'].rstrip('/')}{path}"
 
 
 @app.route("/")
@@ -327,6 +381,9 @@ def register():
         password = request.form.get("password", "")
         if not all([name, email, password]):
             return render_template("register.html", error="Name, email and password are required.")
+        password_error = validate_password_complexity(password)
+        if password_error:
+            return render_template("register.html", error=password_error)
         db = get_db()
         exists = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
         if exists:
@@ -447,6 +504,14 @@ def reset_password(token):
                 token=token,
                 show_navbar=False,
             )
+        password_error = validate_password_complexity(password)
+        if password_error:
+            return render_template(
+                "reset_password.html",
+                error=password_error,
+                token=token,
+                show_navbar=False,
+            )
         db.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (generate_password_hash(password), user["id"]),
@@ -470,7 +535,32 @@ def profile():
     if request.method == "POST":
         phone = request.form.get("phone", "").strip()
         instruments = request.form.get("instruments_played", "").strip()
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
         db = get_db()
+        if any([current_password, new_password, confirm_password]):
+            if not current_password:
+                return render_template("profile.html", user=user, error="Enter your current password to change it.")
+            if not user["password_hash"] or not check_password_hash(user["password_hash"], current_password):
+                return render_template("profile.html", user=user, error="Your current password is incorrect.")
+            if not new_password:
+                return render_template("profile.html", user=user, error="Enter a new password.")
+            if new_password != confirm_password:
+                return render_template("profile.html", user=user, error="The new passwords do not match.")
+            password_error = validate_password_complexity(new_password)
+            if password_error:
+                return render_template("profile.html", user=user, error=password_error)
+            db.execute(
+                "UPDATE users SET phone = ?, instruments_played = ?, password_hash = ? WHERE id = ?",
+                (phone, instruments, generate_password_hash(new_password), user["id"]),
+            )
+            db.commit()
+            return render_template(
+                "profile.html",
+                user=db.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone(),
+                success="Your details and password were updated.",
+            )
         db.execute(
             "UPDATE users SET phone = ?, instruments_played = ? WHERE id = ?",
             (phone, instruments, user["id"]),
@@ -489,6 +579,7 @@ def profile():
 def dashboard():
     user = current_user()
     db = get_db()
+    calendar_token = ensure_calendar_token(user["id"])
     gigs = db.execute(
         """
         SELECT g.*, b.name AS band_name,
@@ -515,7 +606,91 @@ def dashboard():
         """,
         (user["id"],),
     ).fetchall()
-    return render_template("dashboard.html", gigs=gigs, admin_bands=admin_bands)
+    return render_template(
+        "dashboard.html",
+        gigs=gigs,
+        admin_bands=admin_bands,
+        calendar_feed_url=url_for("calendar_feed_guide"),
+        calendar_subscription_url=public_url(url_for("user_calendar_feed", token=calendar_token)),
+    )
+
+
+@app.route("/calendar-feed")
+@login_required
+def calendar_feed_guide():
+    user = current_user()
+    token = ensure_calendar_token(user["id"])
+    return render_template(
+        "calendar_feed.html",
+        calendar_subscription_url=public_url(url_for("user_calendar_feed", token=token)),
+    )
+
+
+@app.route("/calendar/<token>.ics")
+def user_calendar_feed(token):
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE calendar_token = ?", (token,)).fetchone()
+    if not user:
+        return Response("Calendar not found.", status=404, mimetype="text/plain")
+
+    gigs = db.execute(
+        """
+        SELECT g.*, b.name AS band_name,
+               GROUP_CONCAT(gp.part_name, ', ') AS parts
+        FROM gig_parts gp
+        JOIN gigs g ON g.id = gp.gig_id
+        JOIN bands b ON b.id = g.band_id
+        WHERE gp.assigned_user_id = ?
+        GROUP BY g.id
+        ORDER BY g.gig_date ASC, g.start_time ASC
+        """,
+        (user["id"],),
+    ).fetchall()
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Gig Planner//Gig Planner Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        f"X-WR-CALNAME:{ical_escape(user['name'] + ' - Gig Planner')}",
+        "X-PUBLISHED-TTL:PT6H",
+    ]
+
+    now_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    for gig in gigs:
+        start_dt = datetime.strptime(f"{gig['gig_date']} {gig['start_time']}", "%Y-%m-%d %H:%M")
+        end_dt = datetime.strptime(f"{gig['gig_date']} {gig['end_time']}", "%Y-%m-%d %H:%M")
+        summary = f"{gig['band_name']} - {gig['location']}"
+        description_parts = []
+        if gig["parts"]:
+            description_parts.append(f"Your parts: {gig['parts']}")
+        if gig["status"]:
+            description_parts.append(f"Status: {gig['status']}")
+        description = "\\n".join(description_parts)
+
+        lines.extend(
+            [
+                "BEGIN:VEVENT",
+                f"UID:gig-{gig['id']}-user-{user['id']}@gigplanner.uk",
+                f"DTSTAMP:{now_stamp}",
+                f"DTSTART:{start_dt.strftime('%Y%m%dT%H%M%S')}",
+                f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%S')}",
+                f"SUMMARY:{ical_escape(summary)}",
+                f"LOCATION:{ical_escape(gig['location'])}",
+                f"DESCRIPTION:{ical_escape(description)}",
+                "END:VEVENT",
+            ]
+        )
+
+    lines.append("END:VCALENDAR")
+    return Response(
+        "\r\n".join(lines) + "\r\n",
+        mimetype="text/calendar",
+        headers={
+            "Content-Disposition": 'inline; filename="gigplanner.ics"',
+            "Cache-Control": "no-cache, max-age=0",
+        },
+    )
 
 
 @app.route("/api/gig/<int:gig_id>/availability", methods=["POST"])

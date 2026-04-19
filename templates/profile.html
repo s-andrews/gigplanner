@@ -3,11 +3,14 @@
 <div class="row justify-content-center">
   <div class="col-lg-7">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h2 class="mb-0">My details</h2>
+      <h2 class="mb-0">My Details</h2>
       <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     </div>
 
     <div class="card card-body">
+      {% if error %}
+      <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
       {% if success %}
       <div class="alert alert-success">{{ success }}</div>
       {% endif %}
@@ -15,11 +18,11 @@
       <form method="post">
         <div class="mb-3">
           <label class="form-label">Name</label>
-          <input class="form-control" value="{{ user['name'] }}" disabled>
+          <input class="form-control profile-readonly" value="{{ user['name'] }}" disabled>
         </div>
         <div class="mb-3">
           <label class="form-label">Email</label>
-          <input class="form-control" value="{{ user['email'] }}" disabled>
+          <input class="form-control profile-readonly" value="{{ user['email'] }}" disabled>
         </div>
         <div class="mb-3">
           <label class="form-label" for="phone">Phone</label>
@@ -28,6 +31,25 @@
         <div class="mb-3">
           <label class="form-label" for="instruments_played">Instruments Played</label>
           <input id="instruments_played" name="instruments_played" class="form-control" value="{{ user['instruments_played'] or '' }}" placeholder="e.g., Trumpet, Flugelhorn">
+        </div>
+        <div class="d-flex justify-content-end">
+          <button class="btn btn-secondary" type="submit">Save Details</button>
+        </div>
+
+        <hr class="my-4">
+        <h4>Change password</h4>
+        <p class="text-muted mb-3">Passwords must be at least 12 characters and include uppercase, lowercase, a number, and a special character.</p>
+        <div class="mb-3">
+          <label class="form-label" for="current_password">Current password</label>
+          <input id="current_password" name="current_password" type="password" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="new_password">New password</label>
+          <input id="new_password" name="new_password" type="password" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="confirm_password">Confirm new password</label>
+          <input id="confirm_password" name="confirm_password" type="password" class="form-control">
         </div>
         <div class="d-flex justify-content-end">
           <button class="btn btn-secondary" type="submit">Save Details</button>
