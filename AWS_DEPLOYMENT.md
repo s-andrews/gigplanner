@@ -1,11 +1,10 @@
 # Deploying Gig Planner on AWS
 
-This guide describes how to deploy Gig Planner on AWS infrastructure, including:
+This guide explains how to deploy Gig Planner on AWS, including:
 
-- web hosting
-- TLS certificates
-- DNS
-- email sending for password reset and account claiming
+- hosting the application
+- DNS and HTTPS
+- outbound email for password reset and account claiming
 
 It assumes:
 
@@ -14,180 +13,213 @@ It assumes:
 - you control the DNS records for the domain
 - the application code is available in this repository
 
-This guide uses a simple, production-friendly AWS architecture:
+Because Gig Planner currently uses SQLite, it is best deployed as a single application host.
 
-- Amazon EC2 for the Flask application
-- Amazon EBS for persistent local storage
-- Application Load Balancer (ALB) for HTTPS
-- AWS Certificate Manager (ACM) for TLS
-- Amazon Route 53 for DNS hosting or optional DNS management
-- Amazon SES for outbound email
+## Two Supported AWS Deployment Patterns
 
-This is a good fit for the current application because it uses SQLite and local file storage rather than a separate managed database.
+This application can be deployed on AWS in two sensible ways.
 
-## Recommended AWS Architecture
+### Option 1: Single EC2 instance exposed directly to the internet
 
-For a small single-instance deployment:
+Use this if:
 
-- 1 VPC
-- 1 public subnet for the load balancer
-- 1 public subnet for the EC2 instance
-- 1 EC2 instance running Gunicorn and Nginx
-- 1 Application Load Balancer terminating HTTPS
-- 1 ACM public certificate for the domain
-- 1 Route 53 hosted zone or external DNS provider with records pointing into AWS
-- 1 SES verified domain for email sending
+- you will only run one application server
+- you want the simplest and lowest-cost setup
+- you are happy to terminate HTTPS directly on the EC2 instance
+
+Typical stack:
+
+- Amazon EC2
+- Amazon EBS
+- Nginx
+- Gunicorn
+- Route 53 or external DNS
+- Let's Encrypt for TLS
+- Amazon SES for email
 
 Traffic flow:
 
 ```text
-User -> DNS -> ALB (HTTPS) -> EC2 (HTTP) -> Flask/Gunicorn
+User -> DNS -> EC2 (Nginx HTTPS) -> Gunicorn -> Flask
 ```
 
-Email flow:
+### Option 2: Single EC2 instance behind an Application Load Balancer
+
+Use this if:
+
+- you want cleaner AWS-native HTTPS termination
+- you want to use ACM for certificates
+- you may want easier future scaling later
+- you are comfortable paying for an ALB
+
+Typical stack:
+
+- Amazon EC2
+- Amazon EBS
+- Nginx
+- Gunicorn
+- Application Load Balancer
+- AWS Certificate Manager
+- Route 53 or external DNS
+- Amazon SES for email
+
+Traffic flow:
 
 ```text
-Gig Planner -> Amazon SES SMTP -> recipient mailbox
+User -> DNS -> ALB (HTTPS) -> EC2 (HTTP) -> Gunicorn -> Flask
 ```
 
-## AWS Services Used
+## Which Option Should You Choose?
 
-- `Amazon EC2` to run the application
-- `Amazon EBS` to persist the SQLite database and app files
-- `Elastic Load Balancing / Application Load Balancer` for HTTPS and forwarding to EC2
-- `AWS Certificate Manager` for TLS certificates
-- `Amazon Route 53` for DNS hosting if you want AWS to host your DNS
-- `Amazon SES` for password reset/account claim emails
+For this app as it exists today, the recommended default is:
+
+- `Single EC2 exposed directly to the internet`
+
+Reasons:
+
+- the app uses SQLite, so there is no benefit to horizontal scaling right now
+- it is cheaper
+- it is simpler to operate
+- it avoids the cost and complexity of an ALB
+
+Choose the ALB option if:
+
+- you specifically want ACM-managed certificates
+- you want a more AWS-standard edge architecture
+- you expect to evolve the app architecture later
+
+## Shared AWS Services
+
+Both deployment options use the same core AWS services:
+
+- `Amazon EC2` for the app host
+- `Amazon EBS` for persistent disk storage
+- `Amazon SES` for outbound email
+- `Amazon Route 53` optionally for DNS hosting
 - `IAM` for access control
-- `CloudWatch` optionally for logs and alarms
+- `CloudWatch` optionally for monitoring
 
-## Important Application Notes
+Only the load-balanced option additionally uses:
 
-This app currently uses:
+- `Application Load Balancer`
+- `AWS Certificate Manager`
+
+## Important Application Note
+
+The app currently uses:
 
 - Flask
 - SQLite (`gigplanner.db`)
-- SMTP settings from environment variables
+- SMTP environment variables for sending email
 
 Because the database is SQLite:
 
-- this deployment guide is aimed at a single EC2 instance
-- do not place multiple app servers behind the load balancer unless you first move to a shared database such as Amazon RDS
+- deploy one application instance only
+- do not run multiple EC2 app hosts unless you first move to a shared database such as Amazon RDS
 
-## High-Level Deployment Steps
+## DNS Strategy
 
-1. Prepare DNS
-2. Create a VPC and security groups
-3. Launch an EC2 instance
-4. Install the app and run it with Gunicorn
-5. Create an ALB
-6. Request an ACM certificate
-7. Point DNS to the ALB
-8. Configure SES for outbound email
-9. Set environment variables for the app
-10. Test the full site and password reset flow
+You have two main choices for DNS.
 
-## 1. DNS Strategy
+### Use Route 53 for DNS hosting
 
-You have two main options:
+This is often the easiest AWS-centric option.
 
-### Option A: Keep the domain registered elsewhere, but host DNS in Route 53
+You can:
 
-This is often the easiest AWS setup.
+- create a public hosted zone in Route 53
+- update your registrar to use the Route 53 name servers
 
-Steps:
+This works even if the domain was registered somewhere other than AWS.
 
-- create a public hosted zone in Route 53 for your domain
-- copy the Route 53 name servers
-- update the domain registrar to use those Route 53 name servers
-
-### Option B: Keep DNS with the current provider
+### Keep DNS with the current provider
 
 This also works.
 
 You can still use:
 
-- ACM DNS validation
 - SES domain verification
 - SES DKIM
+- ACM DNS validation for the ALB option
 
-but you must manually add the required DNS records at your existing DNS provider.
+but you must add the required DNS records manually at your current DNS provider.
 
-## 2. Choose An AWS Region
+## Choose An AWS Region
 
-Pick one AWS Region and keep the core services together there.
+Pick one AWS Region and keep the application services together there.
 
-Recommended:
+Recommended to keep in the same Region:
 
 - EC2
-- ALB
-- ACM certificate for the ALB
-- SES SMTP credentials
+- SES
+- ALB if used
+- ACM certificate for the ALB if used
 
-Note:
+Notes:
 
 - SES SMTP credentials are region-specific
 - ACM public certificates for an ALB must be created in the same Region as the ALB
 
-## 3. Create Networking
+## Networking
 
-If you do not already have a VPC for this app:
+For either option you need:
 
-- create a VPC
-- create at least one public subnet
-- attach an Internet Gateway
-- ensure the subnet route table allows outbound internet access
+- a VPC
+- at least one public subnet
+- an Internet Gateway
+- route tables allowing internet access
 
-For a small deployment you can keep the EC2 instance in a public subnet, but restrict access tightly with security groups.
+Because this is a single-host deployment, a simple VPC layout is enough.
 
-## 4. Security Groups
+## Security Groups
 
-Create two security groups:
+### Direct-to-EC2 option
 
-### ALB security group
+Use one EC2 security group.
 
 Allow inbound:
 
+- TCP 22 from your admin IP only
 - TCP 80 from `0.0.0.0/0`
 - TCP 443 from `0.0.0.0/0`
 
 Allow outbound:
 
+- all traffic, or at least internet access for package installs and SES SMTP
+
+### ALB option
+
+Create two security groups.
+
+ALB security group inbound:
+
+- TCP 80 from `0.0.0.0/0`
+- TCP 443 from `0.0.0.0/0`
+
+ALB security group outbound:
+
 - all traffic to the EC2 security group
 
-### EC2 security group
-
-Allow inbound:
+EC2 security group inbound:
 
 - TCP 22 from your admin IP only
 - TCP 80 from the ALB security group
 
-Allow outbound:
+EC2 security group outbound:
 
-- all traffic, or at minimum outbound access to package repositories and SES SMTP endpoints
+- all traffic, or at least internet access for updates and SES SMTP
 
-Do not expose the Flask app directly to the internet.
-
-## 5. Launch The EC2 Instance
+## EC2 Instance Setup
 
 Suggested starting point:
 
 - Amazon Linux 2023 or Ubuntu 24.04 LTS
 - `t3.small` or `t3.medium`
-- 20 GB or more gp3 EBS volume
+- 20 GB or more gp3 EBS
 
-Assign:
+Create the instance, attach the correct security group, and SSH in.
 
-- the EC2 security group
-- an IAM role if you want future integration with AWS services
-
-For a simple install, no special IAM permissions are required by the app itself because it uses SMTP rather than the SES API.
-
-## 6. Install The Application On EC2
-
-SSH to the instance and install dependencies.
-
-On Amazon Linux 2023:
+Install dependencies on Amazon Linux 2023:
 
 ```bash
 sudo dnf update -y
@@ -195,13 +227,13 @@ sudo dnf install -y git python3 python3-pip nginx
 python3 -m venv --help >/dev/null || sudo dnf install -y python3-virtualenv
 ```
 
-Create an app user:
+Create a service user:
 
 ```bash
 sudo useradd --system --create-home --home-dir /opt/gigplanner --shell /sbin/nologin gigplanner
 ```
 
-Clone or copy the app:
+Clone or copy the application:
 
 ```bash
 sudo -u gigplanner git clone https://your-repository-url /opt/gigplanner/app
@@ -212,15 +244,9 @@ sudo -u gigplanner ./venv/bin/pip install -r requirements.txt
 sudo -u gigplanner ./venv/bin/pip install gunicorn
 ```
 
-## 7. Configure The Application
+## Application Configuration
 
-Create an environment file:
-
-```bash
-sudo -u gigplanner nano /opt/gigplanner/app/.env
-```
-
-Recommended contents:
+Create `/opt/gigplanner/app/.env`:
 
 ```env
 SECRET_KEY=replace-this-with-a-long-random-secret
@@ -238,16 +264,16 @@ PASSWORD_RESET_MAX_AGE=86400
 
 Adjust:
 
-- `SMTP_SERVER` to the SES SMTP endpoint for your chosen Region
-- `BASE_URL` to your public site URL
+- `SMTP_SERVER` for the SES Region you use
+- `BASE_URL` to the public application URL
 
-Make sure the directory is writable by the service user:
+Then fix ownership:
 
 ```bash
 sudo chown -R gigplanner:gigplanner /opt/gigplanner
 ```
 
-## 8. Run The App With systemd And Gunicorn
+## Run The App With systemd
 
 Create `/etc/systemd/system/gigplanner.service`:
 
@@ -269,7 +295,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Enable and start:
+Enable and start it:
 
 ```bash
 sudo systemctl daemon-reload
@@ -278,11 +304,98 @@ sudo systemctl start gigplanner
 sudo systemctl status gigplanner
 ```
 
-## 9. Configure Nginx On EC2
+## Nginx Setup
 
-Nginx will proxy requests from port 80 on the instance to Gunicorn on `127.0.0.1:8000`.
+For both deployment options, Nginx should reverse proxy to Gunicorn.
 
-Create `/etc/nginx/conf.d/gigplanner.conf`:
+For the ALB option, Nginx can listen on HTTP only.
+
+For the direct-to-EC2 option, Nginx should listen on both HTTP and HTTPS.
+
+## Option 1: Direct Internet Exposure On EC2
+
+This is the simplest deployment.
+
+### Public IP Addressing
+
+Allocate and associate an Elastic IP to the EC2 instance.
+
+Then point DNS at that Elastic IP:
+
+- `A` record for `gigplanner.uk`
+- optional `A` record for `www.gigplanner.uk`
+
+If your DNS provider supports CNAME flattening or ALIAS records, you can use those patterns where needed.
+
+### HTTPS For Direct EC2
+
+For direct public EC2 hosting, the simplest certificate choice is usually Let's Encrypt on the instance.
+
+Install certbot on Amazon Linux:
+
+```bash
+sudo dnf install -y certbot python3-certbot-nginx
+```
+
+Create an initial Nginx site:
+
+```nginx
+server {
+    listen 80;
+    server_name gigplanner.uk www.gigplanner.uk;
+
+    location /static/ {
+        alias /opt/gigplanner/app/static/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+Enable Nginx:
+
+```bash
+sudo nginx -t
+sudo systemctl enable nginx
+sudo systemctl restart nginx
+```
+
+Then request a certificate:
+
+```bash
+sudo certbot --nginx -d gigplanner.uk -d www.gigplanner.uk
+```
+
+This will update Nginx for HTTPS automatically.
+
+### Pros Of Direct EC2
+
+- lower cost
+- fewer AWS resources
+- simpler to understand
+- a good match for a single-host SQLite app
+
+### Cons Of Direct EC2
+
+- TLS is managed on the instance
+- no ALB layer for future scaling
+- less flexibility if architecture changes later
+
+## Option 2: EC2 Behind An Application Load Balancer
+
+This is the more AWS-native HTTPS setup.
+
+### Nginx On EC2
+
+For the ALB option, Nginx can listen on port 80 only:
 
 ```nginx
 server {
@@ -305,7 +418,7 @@ server {
 }
 ```
 
-Then:
+Enable Nginx:
 
 ```bash
 sudo nginx -t
@@ -313,108 +426,106 @@ sudo systemctl enable nginx
 sudo systemctl restart nginx
 ```
 
-## 10. Create A Target Group
+### Target Group
 
-In AWS:
+Create an ALB target group:
 
-- create an ALB target group
 - target type: `instance`
 - protocol: `HTTP`
 - port: `80`
 - health check path: `/`
 
-Register the EC2 instance in that target group.
+Register the EC2 instance in the target group.
 
-## 11. Create An Application Load Balancer
+### Application Load Balancer
 
 Create an internet-facing ALB:
 
-- scheme: `internet-facing`
-- listener: `HTTP 80`
-- listener: `HTTPS 443`
-- subnets: public subnets
-- security group: ALB security group
+- listeners on `80` and `443`
+- public subnets
+- ALB security group
 
-Initially you can have:
+Configure:
 
-- port 80 redirect to 443
-- port 443 forward to the target group
+- HTTP 80 redirects to HTTPS 443
+- HTTPS 443 forwards to the target group
 
-## 12. Request An ACM Certificate
+### ACM Certificate
 
-Request a public certificate in the same Region as the ALB for:
+Request a public ACM certificate in the same Region as the ALB for:
 
 - `gigplanner.uk`
-- `www.gigplanner.uk` if required
+- optionally `www.gigplanner.uk`
 
 Use DNS validation.
 
 If you use Route 53:
 
-- ACM can create validation records automatically if your hosted zone is in the same AWS account and you have permission
-
-If you use another DNS provider:
-
-- manually create the validation CNAME records ACM gives you
-
-Wait for the certificate to become `Issued`, then attach it to the ALB HTTPS listener.
-
-## 13. Point DNS To The ALB
-
-Create DNS records for:
-
-- `gigplanner.uk`
-- optionally `www.gigplanner.uk`
-
-If you use Route 53:
-
-- create an `A` alias record pointing at the ALB
+- ACM can usually create the validation records automatically
 
 If you use external DNS:
 
-- create `CNAME` records for subdomains such as `www`
-- for the apex/root domain, use `ALIAS`, `ANAME`, or your provider’s equivalent if supported
-- otherwise use the provider’s AWS/ALB apex-record feature if available
+- manually create the ACM validation CNAME records
 
-Once DNS is live, the app should be reachable via HTTPS.
+Once issued, attach the certificate to the ALB HTTPS listener.
 
-## 14. Set Up Amazon SES
+### DNS For The ALB Option
 
-The app sends password reset / account claim emails using SMTP, so Amazon SES is a good fit.
+Point DNS at the ALB:
 
-### 14.1 Verify The Sending Domain
+- in Route 53 use an alias `A` record
+- with an external DNS provider use the provider's supported ALIAS/ANAME/CNAME-at-apex feature if available
+
+### Pros Of The ALB Option
+
+- ACM-managed certificates
+- cleaner AWS HTTPS termination
+- easier path to future scaling
+- more AWS-standard edge architecture
+
+### Cons Of The ALB Option
+
+- higher cost
+- more moving parts
+- more complexity for a single-instance app
+
+## Amazon SES Setup
+
+The app sends password reset and account-claim emails using SMTP, so Amazon SES is a good fit for both deployment options.
+
+### 1. Verify Your Domain
 
 In Amazon SES:
 
 - choose your Region
-- create a verified identity for your domain, for example `gigplanner.uk`
+- create a verified identity for `gigplanner.uk`
 
-SES will give you DNS records to add, usually:
+SES will give you DNS records to add, typically:
 
-- TXT verification records
+- TXT verification record
 - DKIM CNAME records
 
-Add these records in Route 53 or your current DNS provider.
+Add them in Route 53 or your current DNS provider.
 
-### 14.2 Move SES Out Of Sandbox
+### 2. Move Out Of Sandbox
 
-By default, a new SES account is in the sandbox.
+New SES accounts start in the sandbox.
 
-While in the sandbox:
+While in sandbox:
 
 - you can only send to verified recipients
-- sending rates are heavily limited
+- sending volume is heavily limited
 
-Request production access in the same SES Region you plan to use.
+Request production access in the same Region as your SES SMTP endpoint.
 
-### 14.3 Create SMTP Credentials
+### 3. Create SMTP Credentials
 
 In SES:
 
 - create SMTP credentials
-- note the SMTP username and password
+- note the username and password
 
-Set these in the app `.env` file:
+Then set the app environment values:
 
 ```env
 SMTP_SERVER=email-smtp.<region>.amazonaws.com
@@ -425,15 +536,12 @@ SMTP_USE_TLS=true
 MAIL_FROM=noreply@gigplanner.uk
 ```
 
-### 14.4 Recommended DNS For Better Deliverability
+### 4. Improve Deliverability
 
-Add the SES records for:
+Recommended DNS records:
 
-- domain verification
+- SES verification
 - DKIM
-
-Optionally set:
-
 - SPF
 - DMARC
 
@@ -449,63 +557,55 @@ Example DMARC:
 v=DMARC1; p=none; rua=mailto:contact@gigplanner.uk
 ```
 
-Tune these based on your mail policy.
+## Testing
 
-## 15. Test Email Sending
+After the app is online:
 
-After SES is configured:
+1. open the site over HTTPS
+2. log in as an existing user
+3. test the dashboard and calendar feed
+4. test `Reset your password`
+5. confirm the email arrives and the reset flow works
 
-1. go to the login page
-2. choose `Reset your password`
-3. submit a known user email
-4. confirm the reset email is delivered
-5. follow the link and set a password
+If email fails, check:
 
-If email fails:
+- app logs
+- SES identity verification
+- sandbox status
+- SMTP username/password
+- SMTP endpoint Region
 
-- check app logs
-- check SES identity verification
-- confirm the account is out of sandbox
-- confirm the SMTP Region matches the endpoint and credentials
+## Persistence And Backups
 
-## 16. Persistence And Backups
+The app stores data in:
 
-The app uses SQLite in `gigplanner.db`.
+```text
+gigplanner.db
+```
 
-That means:
+Because that file is local to the EC2 instance:
 
-- the file lives on the EC2 instance
-- EBS volume persistence matters
-- snapshots are your backup mechanism unless you implement a custom backup job
+- use EBS-backed storage
+- take regular EBS snapshots
+- back up before deployments
 
-Minimum recommendations:
-
-- use gp3 EBS
-- enable EBS snapshots on a schedule
-- take a snapshot before deployments
-
-You can back up manually:
+Manual backup example:
 
 ```bash
 cd /opt/gigplanner/app
 cp gigplanner.db gigplanner.db.backup-$(date +%F-%H%M%S)
 ```
 
-For stronger resilience, consider:
+## Monitoring And Operations
 
-- moving the database to Amazon RDS in the future
-- moving static file assets to S3 if the app grows
+Recommended:
 
-## 17. Monitoring And Operations
+- CloudWatch alarm on EC2 status checks
+- CloudWatch alarm on CPU
+- EBS snapshot schedule
+- CloudWatch alarm on ALB unhealthy targets if using the ALB option
 
-Recommended AWS operational additions:
-
-- CloudWatch alarm on EC2 instance status checks
-- CloudWatch alarm on ALB unhealthy host count
-- CloudWatch alarm on CPU usage
-- AWS Backup or scheduled EBS snapshots
-
-Useful instance checks:
+Useful commands:
 
 ```bash
 sudo systemctl status gigplanner
@@ -513,9 +613,7 @@ sudo systemctl status nginx
 sudo journalctl -u gigplanner -f
 ```
 
-## 18. Updating The Application
-
-To deploy a new version:
+## Updating The Application
 
 ```bash
 cd /opt/gigplanner/app
@@ -533,52 +631,53 @@ sudo systemctl status gigplanner
 sudo nginx -t
 ```
 
-## 19. Cost Notes
+## Cost Guidance
 
-The main AWS costs in this design are:
+### Direct-to-EC2 option
 
-- EC2 instance
-- EBS storage and snapshots
-- ALB hourly charge plus traffic
-- Route 53 hosted zone and DNS queries if you use Route 53
-- SES outbound email
-- data transfer out
+Main AWS costs:
 
-For the smallest low-volume deployment, the ALB may be a meaningful part of the cost. It is still recommended here because:
+- EC2
+- EBS
+- snapshots
+- SES
+- optional Route 53
 
-- ACM certificates attach cleanly to ALB
-- HTTPS termination is simpler
-- the architecture is cleaner and easier to evolve
+This is the cheaper option.
 
-## 20. Suggested AWS Build Order
+### ALB option
 
-If you want the fastest path to a working deployment, do this in order:
+Main AWS costs:
 
-1. choose Region
-2. create Route 53 hosted zone or confirm external DNS access
-3. launch EC2 and install the app
-4. configure Gunicorn and Nginx
-5. verify the SES domain and request SES production access
-6. request ACM certificate and complete DNS validation
-7. create target group and ALB
-8. point DNS at the ALB
-9. update `.env` with final `BASE_URL` and SES SMTP settings
-10. test site login, reset password, and calendar feed links
+- EC2
+- EBS
+- ALB
+- Route 53 if used
+- SES
+- snapshots
 
-## 21. Future Improvements
+This is more expensive but gives a cleaner AWS edge setup.
 
-If the site grows, the next AWS improvements would be:
+## Recommended Choice For This App Today
 
-- move from SQLite to Amazon RDS PostgreSQL
-- store secrets in AWS Systems Manager Parameter Store or AWS Secrets Manager
-- use Auto Scaling
-- place EC2 in private subnets and ALB in public subnets
-- ship logs to CloudWatch Logs
-- use Amazon CloudFront in front of the ALB if needed
+For Gig Planner in its current form, the most practical AWS deployment is:
+
+- `single EC2 instance directly exposed to the internet`
+- `Nginx + Gunicorn on the instance`
+- `Let's Encrypt for HTTPS`
+- `Amazon SES for email`
+
+That is the best balance of:
+
+- simplicity
+- cost
+- suitability for SQLite
+
+If the app later moves to RDS and multiple app instances, revisit the ALB-based option.
 
 ## AWS Documentation Used
 
-This guide aligns with the AWS services and workflows described in:
+This guide aligns with the AWS documentation for:
 
 - ACM DNS validation:
   https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-validate-dns.html
@@ -588,9 +687,9 @@ This guide aligns with the AWS services and workflows described in:
   https://docs.aws.amazon.com/ses/latest/dg/smtp-credentials.html
 - SES verified identities:
   https://docs.aws.amazon.com/ses/latest/dg/verify-addresses-and-domains.html
-- SES production access / sandbox:
+- SES production access:
   https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html
-- Route 53 subdomain / external DNS usage:
+- Route 53 with external DNS or hosted zones:
   https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/creating-migrating.html
 - ALB target groups:
   https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-target-groups.html
