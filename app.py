@@ -5,6 +5,7 @@ import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from functools import wraps
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -27,6 +28,345 @@ app.config["PASSWORD_RESET_MAX_AGE"] = int(os.environ.get("PASSWORD_RESET_MAX_AG
 
 def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+DEFAULT_BAND_TIMEZONE = "Europe/London"
+BUNDLED_TIMEZONE_OPTIONS = [
+    "Europe/Andorra",
+    "Asia/Dubai",
+    "Asia/Kabul",
+    "Europe/Tirane",
+    "Asia/Yerevan",
+    "Antarctica/Casey",
+    "Antarctica/Davis",
+    "Antarctica/Mawson",
+    "Antarctica/Palmer",
+    "Antarctica/Rothera",
+    "Antarctica/Troll",
+    "Antarctica/Vostok",
+    "America/Argentina/Buenos_Aires",
+    "America/Argentina/Cordoba",
+    "America/Argentina/Salta",
+    "America/Argentina/Jujuy",
+    "America/Argentina/Tucuman",
+    "America/Argentina/Catamarca",
+    "America/Argentina/La_Rioja",
+    "America/Argentina/San_Juan",
+    "America/Argentina/Mendoza",
+    "America/Argentina/San_Luis",
+    "America/Argentina/Rio_Gallegos",
+    "America/Argentina/Ushuaia",
+    "Pacific/Pago_Pago",
+    "Europe/Vienna",
+    "Australia/Lord_Howe",
+    "Antarctica/Macquarie",
+    "Australia/Hobart",
+    "Australia/Melbourne",
+    "Australia/Sydney",
+    "Australia/Broken_Hill",
+    "Australia/Brisbane",
+    "Australia/Lindeman",
+    "Australia/Adelaide",
+    "Australia/Darwin",
+    "Australia/Perth",
+    "Australia/Eucla",
+    "Asia/Baku",
+    "America/Barbados",
+    "Asia/Dhaka",
+    "Europe/Brussels",
+    "Europe/Sofia",
+    "Atlantic/Bermuda",
+    "America/La_Paz",
+    "America/Noronha",
+    "America/Belem",
+    "America/Fortaleza",
+    "America/Recife",
+    "America/Araguaina",
+    "America/Maceio",
+    "America/Bahia",
+    "America/Sao_Paulo",
+    "America/Campo_Grande",
+    "America/Cuiaba",
+    "America/Santarem",
+    "America/Porto_Velho",
+    "America/Boa_Vista",
+    "America/Manaus",
+    "America/Eirunepe",
+    "America/Rio_Branco",
+    "Asia/Thimphu",
+    "Europe/Minsk",
+    "America/Belize",
+    "America/St_Johns",
+    "America/Halifax",
+    "America/Glace_Bay",
+    "America/Moncton",
+    "America/Goose_Bay",
+    "America/Toronto",
+    "America/Iqaluit",
+    "America/Winnipeg",
+    "America/Resolute",
+    "America/Rankin_Inlet",
+    "America/Regina",
+    "America/Swift_Current",
+    "America/Edmonton",
+    "America/Cambridge_Bay",
+    "America/Inuvik",
+    "America/Dawson_Creek",
+    "America/Fort_Nelson",
+    "America/Whitehorse",
+    "America/Dawson",
+    "America/Vancouver",
+    "Europe/Zurich",
+    "Africa/Abidjan",
+    "Pacific/Rarotonga",
+    "America/Santiago",
+    "America/Coyhaique",
+    "America/Punta_Arenas",
+    "Pacific/Easter",
+    "Asia/Shanghai",
+    "Asia/Urumqi",
+    "America/Bogota",
+    "America/Costa_Rica",
+    "America/Havana",
+    "Atlantic/Cape_Verde",
+    "Asia/Nicosia",
+    "Asia/Famagusta",
+    "Europe/Prague",
+    "Europe/Berlin",
+    "America/Santo_Domingo",
+    "Africa/Algiers",
+    "America/Guayaquil",
+    "Pacific/Galapagos",
+    "Europe/Tallinn",
+    "Africa/Cairo",
+    "Africa/El_Aaiun",
+    "Europe/Madrid",
+    "Africa/Ceuta",
+    "Atlantic/Canary",
+    "Europe/Helsinki",
+    "Pacific/Fiji",
+    "Atlantic/Stanley",
+    "Pacific/Kosrae",
+    "Atlantic/Faroe",
+    "Europe/Paris",
+    "Europe/London",
+    "Asia/Tbilisi",
+    "America/Cayenne",
+    "Europe/Gibraltar",
+    "America/Nuuk",
+    "America/Danmarkshavn",
+    "America/Scoresbysund",
+    "America/Thule",
+    "Europe/Athens",
+    "Atlantic/South_Georgia",
+    "America/Guatemala",
+    "Pacific/Guam",
+    "Africa/Bissau",
+    "America/Guyana",
+    "Asia/Hong_Kong",
+    "America/Tegucigalpa",
+    "America/Port-au-Prince",
+    "Europe/Budapest",
+    "Asia/Jakarta",
+    "Asia/Pontianak",
+    "Asia/Makassar",
+    "Asia/Jayapura",
+    "Europe/Dublin",
+    "Asia/Jerusalem",
+    "Asia/Kolkata",
+    "Indian/Chagos",
+    "Asia/Baghdad",
+    "Asia/Tehran",
+    "Europe/Rome",
+    "America/Jamaica",
+    "Asia/Amman",
+    "Asia/Tokyo",
+    "Africa/Nairobi",
+    "Asia/Bishkek",
+    "Pacific/Tarawa",
+    "Pacific/Kanton",
+    "Pacific/Kiritimati",
+    "Asia/Pyongyang",
+    "Asia/Seoul",
+    "Asia/Almaty",
+    "Asia/Qyzylorda",
+    "Asia/Qostanay",
+    "Asia/Aqtobe",
+    "Asia/Aqtau",
+    "Asia/Atyrau",
+    "Asia/Oral",
+    "Asia/Beirut",
+    "Asia/Colombo",
+    "Africa/Monrovia",
+    "Europe/Vilnius",
+    "Europe/Riga",
+    "Africa/Tripoli",
+    "Africa/Casablanca",
+    "Europe/Chisinau",
+    "Pacific/Kwajalein",
+    "Asia/Yangon",
+    "Asia/Ulaanbaatar",
+    "Asia/Hovd",
+    "Asia/Macau",
+    "America/Martinique",
+    "Europe/Malta",
+    "Indian/Mauritius",
+    "Indian/Maldives",
+    "America/Mexico_City",
+    "America/Cancun",
+    "America/Merida",
+    "America/Monterrey",
+    "America/Matamoros",
+    "America/Chihuahua",
+    "America/Ciudad_Juarez",
+    "America/Ojinaga",
+    "America/Mazatlan",
+    "America/Bahia_Banderas",
+    "America/Hermosillo",
+    "America/Tijuana",
+    "Asia/Kuching",
+    "Africa/Maputo",
+    "Africa/Windhoek",
+    "Pacific/Noumea",
+    "Pacific/Norfolk",
+    "Africa/Lagos",
+    "America/Managua",
+    "Asia/Kathmandu",
+    "Pacific/Nauru",
+    "Pacific/Niue",
+    "Pacific/Auckland",
+    "Pacific/Chatham",
+    "America/Panama",
+    "America/Lima",
+    "Pacific/Tahiti",
+    "Pacific/Marquesas",
+    "Pacific/Gambier",
+    "Pacific/Port_Moresby",
+    "Pacific/Bougainville",
+    "Asia/Manila",
+    "Asia/Karachi",
+    "Europe/Warsaw",
+    "America/Miquelon",
+    "Pacific/Pitcairn",
+    "America/Puerto_Rico",
+    "Asia/Gaza",
+    "Asia/Hebron",
+    "Europe/Lisbon",
+    "Atlantic/Madeira",
+    "Atlantic/Azores",
+    "Pacific/Palau",
+    "America/Asuncion",
+    "Asia/Qatar",
+    "Europe/Bucharest",
+    "Europe/Belgrade",
+    "Europe/Kaliningrad",
+    "Europe/Moscow",
+    "Europe/Simferopol",
+    "Europe/Kirov",
+    "Europe/Volgograd",
+    "Europe/Astrakhan",
+    "Europe/Saratov",
+    "Europe/Ulyanovsk",
+    "Europe/Samara",
+    "Asia/Yekaterinburg",
+    "Asia/Omsk",
+    "Asia/Novosibirsk",
+    "Asia/Barnaul",
+    "Asia/Tomsk",
+    "Asia/Novokuznetsk",
+    "Asia/Krasnoyarsk",
+    "Asia/Irkutsk",
+    "Asia/Chita",
+    "Asia/Yakutsk",
+    "Asia/Khandyga",
+    "Asia/Vladivostok",
+    "Asia/Ust-Nera",
+    "Asia/Magadan",
+    "Asia/Sakhalin",
+    "Asia/Srednekolymsk",
+    "Asia/Kamchatka",
+    "Asia/Anadyr",
+    "Asia/Riyadh",
+    "Pacific/Guadalcanal",
+    "Africa/Khartoum",
+    "Asia/Singapore",
+    "America/Paramaribo",
+    "Africa/Juba",
+    "Africa/Sao_Tome",
+    "America/El_Salvador",
+    "Asia/Damascus",
+    "America/Grand_Turk",
+    "Africa/Ndjamena",
+    "Asia/Bangkok",
+    "Asia/Dushanbe",
+    "Pacific/Fakaofo",
+    "Asia/Dili",
+    "Asia/Ashgabat",
+    "Africa/Tunis",
+    "Pacific/Tongatapu",
+    "Europe/Istanbul",
+    "Asia/Taipei",
+    "Europe/Kyiv",
+    "America/New_York",
+    "America/Detroit",
+    "America/Kentucky/Louisville",
+    "America/Kentucky/Monticello",
+    "America/Indiana/Indianapolis",
+    "America/Indiana/Vincennes",
+    "America/Indiana/Winamac",
+    "America/Indiana/Marengo",
+    "America/Indiana/Petersburg",
+    "America/Indiana/Vevay",
+    "America/Chicago",
+    "America/Indiana/Tell_City",
+    "America/Indiana/Knox",
+    "America/Menominee",
+    "America/North_Dakota/Center",
+    "America/North_Dakota/New_Salem",
+    "America/North_Dakota/Beulah",
+    "America/Denver",
+    "America/Boise",
+    "America/Phoenix",
+    "America/Los_Angeles",
+    "America/Anchorage",
+    "America/Juneau",
+    "America/Sitka",
+    "America/Metlakatla",
+    "America/Yakutat",
+    "America/Nome",
+    "America/Adak",
+    "Pacific/Honolulu",
+    "America/Montevideo",
+    "Asia/Samarkand",
+    "Asia/Tashkent",
+    "America/Caracas",
+    "Asia/Ho_Chi_Minh",
+    "Pacific/Efate",
+    "Pacific/Apia",
+    "Africa/Johannesburg",
+]
+BUNDLED_TIMEZONE_SET = set(BUNDLED_TIMEZONE_OPTIONS)
+
+
+def get_timezone_options():
+    options = sorted(BUNDLED_TIMEZONE_OPTIONS)
+    if DEFAULT_BAND_TIMEZONE not in options:
+        options.insert(0, DEFAULT_BAND_TIMEZONE)
+    return options
+
+
+TIMEZONE_OPTIONS = get_timezone_options()
+
+
+def normalize_band_timezone(value):
+    timezone_name = (value or "").strip() or DEFAULT_BAND_TIMEZONE
+    if timezone_name in BUNDLED_TIMEZONE_SET:
+        return timezone_name
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        return None
+    return timezone_name
 
 
 def validate_password_complexity(password):
@@ -71,6 +411,13 @@ def human_date(value):
     return f"{weekday} {ordinal(parsed.day)} {parsed.strftime('%B %Y')}"
 
 
+@app.template_filter("timezone_label")
+def timezone_label(value):
+    if not value:
+        return DEFAULT_BAND_TIMEZONE
+    return str(value).replace("_", " ")
+
+
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DATABASE)
@@ -106,6 +453,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS bands (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            timezone TEXT NOT NULL DEFAULT 'Europe/London',
             created_by INTEGER NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY(created_by) REFERENCES users(id)
@@ -185,6 +533,15 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN instruments_played TEXT")
     if "calendar_token" not in user_columns:
         cur.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
+    band_columns = {row[1] for row in cur.execute("PRAGMA table_info(bands)").fetchall()}
+    if "timezone" not in band_columns:
+        cur.execute(
+            f"ALTER TABLE bands ADD COLUMN timezone TEXT NOT NULL DEFAULT '{DEFAULT_BAND_TIMEZONE}'"
+        )
+    cur.execute(
+        "UPDATE bands SET timezone = ? WHERE timezone IS NULL OR TRIM(timezone) = ''",
+        (DEFAULT_BAND_TIMEZONE,),
+    )
     users_sql_row = cur.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
     ).fetchone()
@@ -299,8 +656,15 @@ def inject_user():
     band_id = request.view_args.get("band_id") if request.view_args else None
     if user and band_id and is_band_admin(band_id, user["id"]):
         db = get_db()
-        current_band = db.execute("SELECT id, name FROM bands WHERE id = ?", (band_id,)).fetchone()
-    return {"current_user": user, "current_band": current_band}
+        current_band = db.execute(
+            "SELECT id, name, timezone FROM bands WHERE id = ?",
+            (band_id,),
+        ).fetchone()
+    return {
+        "current_user": user,
+        "current_band": current_band,
+        "default_band_timezone": DEFAULT_BAND_TIMEZONE,
+    }
 
 
 def get_reset_serializer():
@@ -359,6 +723,10 @@ def ical_escape(value):
         .replace("\r\n", r"\n")
         .replace("\n", r"\n")
     )
+
+
+def ical_format_local(value):
+    return value.strftime("%Y%m%dT%H%M%S")
 
 
 def public_url(path):
@@ -582,7 +950,7 @@ def dashboard():
     calendar_token = ensure_calendar_token(user["id"])
     gigs = db.execute(
         """
-        SELECT g.*, b.name AS band_name,
+        SELECT g.*, b.name AS band_name, b.timezone AS band_timezone,
                GROUP_CONCAT(gp.part_name, ', ') AS parts,
                COALESCE(av.status, 'Unanswered') AS availability_status
         FROM gig_parts gp
@@ -635,7 +1003,7 @@ def user_calendar_feed(token):
 
     gigs = db.execute(
         """
-        SELECT g.*, b.name AS band_name,
+        SELECT g.*, b.name AS band_name, b.timezone AS band_timezone,
                GROUP_CONCAT(gp.part_name, ', ') AS parts
         FROM gig_parts gp
         JOIN gigs g ON g.id = gp.gig_id
@@ -660,12 +1028,14 @@ def user_calendar_feed(token):
     for gig in gigs:
         start_dt = datetime.strptime(f"{gig['gig_date']} {gig['start_time']}", "%Y-%m-%d %H:%M")
         end_dt = datetime.strptime(f"{gig['gig_date']} {gig['end_time']}", "%Y-%m-%d %H:%M")
+        band_timezone = normalize_band_timezone(gig["band_timezone"]) or DEFAULT_BAND_TIMEZONE
         summary = f"{gig['band_name']} - {gig['location']}"
         description_parts = []
         if gig["parts"]:
             description_parts.append(f"Your parts: {gig['parts']}")
         if gig["status"]:
             description_parts.append(f"Status: {gig['status']}")
+        description_parts.append(f"Band timezone: {band_timezone}")
         description = "\\n".join(description_parts)
 
         lines.extend(
@@ -673,8 +1043,8 @@ def user_calendar_feed(token):
                 "BEGIN:VEVENT",
                 f"UID:gig-{gig['id']}-user-{user['id']}@gigplanner.uk",
                 f"DTSTAMP:{now_stamp}",
-                f"DTSTART:{start_dt.strftime('%Y%m%dT%H%M%S')}",
-                f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%S')}",
+                f"DTSTART;TZID={ical_escape(band_timezone)}:{ical_format_local(start_dt)}",
+                f"DTEND;TZID={ical_escape(band_timezone)}:{ical_format_local(end_dt)}",
                 f"SUMMARY:{ical_escape(summary)}",
                 f"LOCATION:{ical_escape(gig['location'])}",
                 f"DESCRIPTION:{ical_escape(description)}",
@@ -725,15 +1095,30 @@ def update_availability(gig_id):
 @app.route("/band/create", methods=["GET", "POST"])
 @login_required
 def create_band():
+    selected_timezone = DEFAULT_BAND_TIMEZONE
     if request.method == "POST":
         name = request.form.get("name", "").strip()
+        selected_timezone = request.form.get("timezone", "")
+        timezone_name = normalize_band_timezone(selected_timezone)
         if not name:
-            return render_template("create_band.html", error="Band name is required.")
+            return render_template(
+                "create_band.html",
+                error="Band name is required.",
+                timezone_options=TIMEZONE_OPTIONS,
+                selected_timezone=selected_timezone,
+            )
+        if not timezone_name:
+            return render_template(
+                "create_band.html",
+                error="Please choose a valid timezone for the band.",
+                timezone_options=TIMEZONE_OPTIONS,
+                selected_timezone=selected_timezone,
+            )
         db = get_db()
         uid = session["user_id"]
         cur = db.execute(
-            "INSERT INTO bands (name, created_by, created_at) VALUES (?, ?, ?)",
-            (name, uid, utc_now_iso()),
+            "INSERT INTO bands (name, timezone, created_by, created_at) VALUES (?, ?, ?, ?)",
+            (name, timezone_name, uid, utc_now_iso()),
         )
         band_id = cur.lastrowid
         db.execute("INSERT INTO band_admins (band_id, user_id) VALUES (?, ?)", (band_id, uid))
@@ -743,7 +1128,11 @@ def create_band():
         )
         db.commit()
         return redirect(url_for("band_setup", band_id=band_id))
-    return render_template("create_band.html")
+    return render_template(
+        "create_band.html",
+        timezone_options=TIMEZONE_OPTIONS,
+        selected_timezone=selected_timezone,
+    )
 
 
 @app.route("/band/<int:band_id>/setup/complete")
@@ -752,6 +1141,44 @@ def complete_band_setup(band_id):
     if not is_band_admin(band_id, session["user_id"]):
         return redirect(url_for("dashboard"))
     return redirect(url_for("band_admin", band_id=band_id))
+
+
+@app.route("/band/<int:band_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_band(band_id):
+    uid = session["user_id"]
+    if not is_band_admin(band_id, uid):
+        return redirect(url_for("dashboard"))
+
+    db = get_db()
+    band = db.execute("SELECT * FROM bands WHERE id = ?", (band_id,)).fetchone()
+    if not band:
+        return redirect(url_for("dashboard"))
+
+    error = None
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        selected_timezone = request.form.get("timezone", "")
+        timezone_name = normalize_band_timezone(selected_timezone)
+        if not name:
+            error = "Band name is required."
+        elif not timezone_name:
+            error = "Please choose a valid timezone for the band."
+        else:
+            db.execute(
+                "UPDATE bands SET name = ?, timezone = ? WHERE id = ?",
+                (name, timezone_name, band_id),
+            )
+            db.commit()
+            return redirect(url_for("dashboard"))
+        band = {**dict(band), "name": name, "timezone": selected_timezone}
+
+    return render_template(
+        "edit_band.html",
+        band=band,
+        error=error,
+        timezone_options=TIMEZONE_OPTIONS,
+    )
 
 
 @app.route("/band/<int:band_id>/setup")
@@ -1013,7 +1440,7 @@ def gig_responses_page(band_id, gig_id):
     db = get_db()
     gig = db.execute(
         """
-        SELECT g.*, b.name AS band_name
+        SELECT g.*, b.name AS band_name, b.timezone AS band_timezone
         FROM gigs g
         JOIN bands b ON b.id = g.band_id
         WHERE g.id = ? AND g.band_id = ?

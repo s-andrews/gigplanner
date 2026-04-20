@@ -18,7 +18,7 @@
           <div>
             <h5 class="mb-1">{{ gig['band_name'] }} - {{ gig['location'] }}</h5>
             <div>{{ gig['gig_date']|human_date }} | {{ gig['start_time'] }} - {{ gig['end_time'] }}</div>
-            <small class="text-muted">Your parts: {{ gig['parts'] or '-' }}</small>
+            <small class="text-muted">Your parts: {{ gig['parts'] or '-' }} | Timezone: {{ gig['band_timezone']|timezone_label }}</small>
           </div>
           <div class="availability-control" data-gig-id="{{ gig['id'] }}">
             <label class="form-label mb-0">Availability</label>
@@ -45,9 +45,11 @@
       <div class="col-12">
         <div class="card card-body">
           <h4>{{ band['name'] }}</h4>
+          <div class="text-muted small mb-2">Timezone: {{ band['timezone']|timezone_label }}</div>
           <div class="d-flex gap-2">
             <a class="btn btn-secondary btn-sm" href="{{ url_for('band_admin', band_id=band['id']) }}">Gig Admin</a>
             <a class="btn btn-secondary btn-sm" href="{{ url_for('band_setup', band_id=band['id']) }}">Band Setup</a>
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('edit_band', band_id=band['id']) }}">Edit Band</a>
           </div>
         </div>
       </div>
