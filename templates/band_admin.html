@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <h2>Gig Admin: {{ band['name'] }}</h2>
-<div class="alert alert-secondary">
+<div class="band-timezone-notice">
   All gig dates and times on this page use the band timezone: <strong>{{ band['timezone']|timezone_label }}</strong>.
 </div>
 <div class="card card-body mb-4">

@@ -57,6 +57,20 @@ body::before {
   color: #adb5bd !important;
 }
 
+.band-timezone-notice {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.75rem;
+  background-color: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #cbd5e1;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.18);
+}
+
+.band-timezone-notice strong {
+  color: #f8f9fa;
+}
+
 h1,
 h2,
 h3 {
