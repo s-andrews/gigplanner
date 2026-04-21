@@ -239,13 +239,13 @@ h3 {
 
 .band-part-row {
   display: grid;
-  grid-template-columns: max-content minmax(9rem, 14rem) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 0.75rem;
   align-items: center;
-  justify-content: space-between;
 }
 
 .band-part-name {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -254,6 +254,15 @@ h3 {
 .band-part-player,
 .band-part-delete {
   margin-bottom: 0;
+}
+
+.band-part-player {
+  width: min(12rem, 100%);
+  justify-self: end;
+}
+
+.band-part-delete {
+  justify-self: end;
 }
 
 @media (max-width: 767.98px) {
