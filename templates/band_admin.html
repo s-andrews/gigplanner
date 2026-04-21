@@ -20,39 +20,50 @@
 
 
 <h3>Existing Gigs</h3>
-<div class="table-responsive mb-3">
-<table class="table table-striped align-middle admin-gigs-table" id="gigs-table">
-  <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Location</th><th>Status</th><th>Responses</th><th>Actions</th></tr></thead>
-  <tbody>
-    {% for gig in gigs %}
-    <tr data-gig-id="{{ gig['id'] }}">
-      <td><input class="form-control form-control-sm fld-date" type="date" value="{{ gig['gig_date'] }}"></td>
-      <td><input class="form-control form-control-sm fld-start" type="time" value="{{ gig['start_time'] }}"></td>
-      <td><input class="form-control form-control-sm fld-end" type="time" value="{{ gig['end_time'] }}"></td>
-      <td><input class="form-control form-control-sm fld-location" value="{{ gig['location'] }}"></td>
-      <td>
+<div class="admin-gig-list mb-3" id="gigs-list">
+  {% for gig in gigs %}
+  <section class="card card-body admin-gig-card" data-gig-id="{{ gig['id'] }}">
+    <div class="admin-gig-card-fields">
+      <div class="admin-gig-field">
+        <input class="form-control form-control-sm fld-date" type="date" value="{{ gig['gig_date'] }}">
+      </div>
+      <div class="admin-gig-field">
+        <input class="form-control form-control-sm fld-start" type="time" value="{{ gig['start_time'] }}">
+      </div>
+      <div class="admin-gig-field">
+        <input class="form-control form-control-sm fld-end" type="time" value="{{ gig['end_time'] }}">
+      </div>
+      <div class="admin-gig-field admin-gig-field-location">
+        <input class="form-control form-control-sm fld-location" value="{{ gig['location'] }}">
+      </div>
+      <div class="admin-gig-field">
         <select class="form-select form-select-sm fld-status">
           <option {% if gig['status']=='Unconfirmed' %}selected{% endif %}>Unconfirmed</option>
           <option {% if gig['status']=='Confirmed' %}selected{% endif %}>Confirmed</option>
         </select>
-      </td>
-      <td class="small">
+      </div>
+    </div>
+
+    <div class="admin-gig-card-meta">
+      <div class="admin-gig-card-section">
         <div class="response-summary admin-response-summary">
           <span class="response-summary-item response-summary-item-available">{{ gig['available_count'] }} Available</span>
           <span class="response-summary-item response-summary-item-not-available">{{ gig['not_available_count'] }} Not Available</span>
           <span class="response-summary-item">{{ gig['unsure_count'] }} Not sure</span>
           <span class="response-summary-item">{{ gig['unanswered_count'] }} Unanswered</span>
         </div>
-      </td>
-      <td class="admin-gig-actions">
-        <button class="btn btn-sm btn-secondary manage-parts">Edit Lineup</button>
-        <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Responses</a>
-        <button class="btn btn-sm btn-danger delete-gig">Delete</button>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+      </div>
+
+      <div class="admin-gig-card-section">
+        <div class="admin-gig-actions">
+          <button class="btn btn-sm btn-secondary manage-parts">Edit Lineup</button>
+          <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Responses</a>
+          <button class="btn btn-sm btn-danger delete-gig">Delete</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
 </div>
 
 <div class="modal fade" id="partsModal" tabindex="-1">

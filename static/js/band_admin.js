@@ -31,14 +31,14 @@ async function createGig() {
 
 document.getElementById('create-gig-btn')?.addEventListener('click', createGig);
 
-async function saveGigRow(row) {
-  const gigId = row.dataset.gigId;
+async function saveGigCard(card) {
+  const gigId = card.dataset.gigId;
   const payload = {
-    gig_date: row.querySelector('.fld-date').value,
-    start_time: row.querySelector('.fld-start').value,
-    end_time: row.querySelector('.fld-end').value,
-    location: row.querySelector('.fld-location').value,
-    status: row.querySelector('.fld-status').value,
+    gig_date: card.querySelector('.fld-date').value,
+    start_time: card.querySelector('.fld-start').value,
+    end_time: card.querySelector('.fld-end').value,
+    location: card.querySelector('.fld-location').value,
+    status: card.querySelector('.fld-status').value,
   };
   const res = await fetch(`/api/gig/${gigId}`, {
     method: 'POST',
@@ -50,18 +50,18 @@ async function saveGigRow(row) {
   }
 }
 
-document.querySelectorAll('#gigs-table tbody tr').forEach((row) => {
-  row.querySelectorAll('.fld-date, .fld-start, .fld-end, .fld-location, .fld-status').forEach((field) => {
+document.querySelectorAll('#gigs-list [data-gig-id]').forEach((card) => {
+  card.querySelectorAll('.fld-date, .fld-start, .fld-end, .fld-location, .fld-status').forEach((field) => {
     field.addEventListener('change', async (e) => {
-      await saveGigRow(e.target.closest('tr'));
+      await saveGigCard(e.target.closest('[data-gig-id]'));
     });
   });
 });
 
 document.querySelectorAll('.delete-gig').forEach((btn) => {
   btn.addEventListener('click', async (e) => {
-    const row = e.target.closest('tr');
-    const gigId = row.dataset.gigId;
+    const card = e.target.closest('[data-gig-id]');
+    const gigId = card.dataset.gigId;
     const confirmed = window.confirm('Are you sure you want to delete this gig? This cannot be undone.');
     if (!confirmed) return;
 
@@ -70,7 +70,7 @@ document.querySelectorAll('.delete-gig').forEach((btn) => {
       alert('Delete failed');
       return;
     }
-    row.remove();
+    card.remove();
   });
 });
 
@@ -130,7 +130,7 @@ async function loadParts(gigId) {
 
 document.querySelectorAll('.manage-parts').forEach((btn) => {
   btn.addEventListener('click', (e) => {
-    activeGigId = e.target.closest('tr').dataset.gigId;
+    activeGigId = e.target.closest('[data-gig-id]').dataset.gigId;
     loadParts(activeGigId);
     const modal = new bootstrap.Modal(document.getElementById('partsModal'));
     modal.show();

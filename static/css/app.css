@@ -150,20 +150,78 @@ h3 {
   padding: 0.2rem 0.5rem;
 }
 
-.admin-gigs-table > :not(caption) > * > * {
-  padding: 0.45rem 0.35rem;
+.admin-gig-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-gig-card {
+  padding: 1rem;
+}
+
+.admin-gig-card-fields {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.admin-gig-field-location {
+  grid-column: span 3;
+}
+
+.admin-gig-card-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.admin-gig-card-section {
+  min-width: 0;
 }
 
 .admin-gig-actions {
-  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .admin-gig-actions .btn {
-  margin-right: 0.35rem;
+  flex: 1 1 10rem;
 }
 
-.admin-gig-actions .btn:last-child {
-  margin-right: 0;
+@media (max-width: 991.98px) {
+  .admin-gig-card-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-gig-field-location {
+    grid-column: span 2;
+  }
+
+  .admin-gig-card-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .admin-gig-card {
+    padding: 0.9rem;
+  }
+
+  .admin-gig-card-fields {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .admin-gig-field-location {
+    grid-column: auto;
+  }
+
+  .admin-gig-actions .btn {
+    flex-basis: 100%;
+  }
 }
 
 .response-summary-item-available {
