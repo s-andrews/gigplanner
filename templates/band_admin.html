@@ -67,8 +67,7 @@
 
           <div class="admin-gig-card-section">
             <div class="admin-gig-actions">
-              <button class="btn btn-sm btn-secondary manage-parts">Edit Lineup</button>
-              <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Responses</a>
+              <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Edit Lineup</a>
               <button class="btn btn-sm btn-danger delete-gig">Delete</button>
             </div>
           </div>
@@ -105,29 +104,6 @@
 </div>
 {% endif %}
 
-<div class="modal fade" id="partsModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">Manage Gig Lineup</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <div id="parts-list"></div>
-        <hr>
-        <h6>Add part to this gig</h6>
-        <div class="row g-2">
-          <div class="col-md-5"><input id="new-gig-part-name" class="form-control" placeholder="Part"></div>
-          <div class="col-md-5">
-            <select id="new-gig-part-player" class="form-select">
-              <option value="">-- Unassigned --</option>
-              {% for p in players %}<option value="{{ p['id'] }}">{{ p['name'] }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="col-md-2"><button id="add-gig-part-btn" class="btn btn-secondary w-100">Add</button></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="modal fade" id="rehearsalModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -151,7 +127,6 @@
 {% block scripts %}
 <script>
 window.BAND_ID={{ band['id'] }};
-window.PLAYERS={{ players|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/band_admin.js') }}"></script>
 {% endblock %}

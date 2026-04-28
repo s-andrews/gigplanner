@@ -1,6 +1,4 @@
 const bandId = window.BAND_ID;
-const players = window.PLAYERS;
-let activeGigId = null;
 let activeRehearsalDate = null;
 
 function activateAdminTabFromHash() {
@@ -90,83 +88,6 @@ document.querySelectorAll('.delete-gig').forEach((btn) => {
     }
     card.remove();
   });
-});
-
-function playerOptions(selectedId) {
-  const opts = ['<option value="">-- Unassigned --</option>'];
-  players.forEach(p => {
-    opts.push(`<option value="${p.id}" ${String(selectedId)===String(p.id)?'selected':''}>${p.name}</option>`);
-  });
-  return opts.join('');
-}
-
-async function loadParts(gigId) {
-  const res = await fetch(`/api/gig/${gigId}/parts`);
-  const data = await res.json();
-  const container = document.getElementById('parts-list');
-  if (!data.ok) {
-    container.innerHTML = '<div class="alert alert-danger">Could not load parts</div>';
-    return;
-  }
-  container.innerHTML = data.parts.map(part => `
-    <div class="row g-2 mb-2 align-items-center" data-gp-id="${part.id}">
-      <div class="col-md-5"><input class="form-control form-control-sm gp-name" value="${part.part_name}"></div>
-      <div class="col-md-5"><select class="form-select form-select-sm gp-player">${playerOptions(part.assigned_user_id)}</select></div>
-      <div class="col-md-2 d-flex justify-content-end"><button class="btn btn-sm btn-danger gp-del">Remove Part</button></div>
-    </div>
-  `).join('');
-
-  async function savePart(row) {
-    const gpId = row.dataset.gpId;
-    await fetch(`/api/gig/part/${gpId}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        part_name: row.querySelector('.gp-name').value,
-        assigned_user_id: row.querySelector('.gp-player').value || null,
-      })
-    });
-  }
-
-  container.querySelectorAll('.gp-name, .gp-player').forEach((field) => {
-    field.addEventListener('change', async (e) => {
-      const row = e.target.closest('[data-gp-id]');
-      await savePart(row);
-    });
-  });
-
-  container.querySelectorAll('.gp-del').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      const gpId = e.target.closest('[data-gp-id]').dataset.gpId;
-      const confirmed = window.confirm('Are you sure you want to remove this part from the lineup?');
-      if (!confirmed) return;
-      await fetch(`/api/gig/part/${gpId}`, {method: 'DELETE'});
-      loadParts(gigId);
-    });
-  });
-}
-
-document.querySelectorAll('.manage-parts').forEach((btn) => {
-  btn.addEventListener('click', (e) => {
-    activeGigId = e.target.closest('[data-gig-id]').dataset.gigId;
-    loadParts(activeGigId);
-    const modal = new bootstrap.Modal(document.getElementById('partsModal'));
-    modal.show();
-  });
-});
-
-document.getElementById('add-gig-part-btn')?.addEventListener('click', async () => {
-  if (!activeGigId) return;
-  await fetch(`/api/gig/${activeGigId}/part`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      part_name: document.getElementById('new-gig-part-name').value,
-      assigned_user_id: document.getElementById('new-gig-part-player').value || null,
-    })
-  });
-  document.getElementById('new-gig-part-name').value = '';
-  loadParts(activeGigId);
 });
 
 async function openRehearsalModal(rehearsalDate) {

@@ -2091,6 +2091,19 @@ def gig_responses_page(band_id, gig_id):
         """
         SELECT u.id AS user_id,
                u.name AS player_name,
+               CASE WHEN EXISTS (
+                   SELECT 1
+                   FROM gig_parts gp2
+                   WHERE gp2.gig_id = ?
+                     AND gp2.assigned_user_id = u.id
+               ) THEN 1 ELSE 0 END AS is_assigned,
+               CASE WHEN EXISTS (
+                   SELECT 1
+                   FROM part_defaults pd
+                   JOIN parts p ON p.id = pd.part_id
+                   WHERE p.band_id = bm.band_id
+                     AND pd.user_id = u.id
+               ) THEN 1 ELSE 0 END AS is_regular,
                COALESCE(av.status, 'Unanswered') AS availability_status,
                av.updated_at
         FROM band_memberships bm
@@ -2099,7 +2112,47 @@ def gig_responses_page(band_id, gig_id):
         WHERE bm.band_id = ?
         ORDER BY u.name
         """,
-        (gig_id, band_id),
+        (gig_id, gig_id, band_id),
+    ).fetchall()
+    part_rows = db.execute(
+        """
+        SELECT gp.id,
+               gp.part_name,
+               gp.assigned_user_id,
+               u.name AS assigned_user_name,
+               COALESCE(av.status, 'Unanswered') AS availability_status,
+               CASE WHEN EXISTS (
+                   SELECT 1
+                   FROM part_defaults pd
+                   JOIN parts p ON p.id = pd.part_id
+                   WHERE p.band_id = g.band_id
+                     AND pd.user_id = gp.assigned_user_id
+               ) THEN 1 ELSE 0 END AS assigned_user_is_regular
+        FROM gig_parts gp
+        JOIN gigs g ON g.id = gp.gig_id
+        LEFT JOIN users u ON u.id = gp.assigned_user_id
+        LEFT JOIN availability av ON av.gig_id = gp.gig_id AND av.user_id = gp.assigned_user_id
+        WHERE gp.gig_id = ?
+        ORDER BY gp.part_name
+        """,
+        (gig_id,),
+    ).fetchall()
+    band_players = db.execute(
+        """
+        SELECT u.id, u.name,
+               CASE WHEN EXISTS (
+                   SELECT 1
+                   FROM part_defaults pd
+                   JOIN parts p ON p.id = pd.part_id
+                   WHERE p.band_id = bm.band_id
+                     AND pd.user_id = u.id
+               ) THEN 1 ELSE 0 END AS is_regular
+        FROM band_memberships bm
+        JOIN users u ON u.id = bm.user_id
+        WHERE bm.band_id = ?
+        ORDER BY u.name
+        """,
+        (band_id,),
     ).fetchall()
     summary = {
         "available": 0,
@@ -2117,11 +2170,15 @@ def gig_responses_page(band_id, gig_id):
             summary["unsure"] += 1
         else:
             summary["unanswered"] += 1
+    response_rows = [dict(response) for response in responses]
     return render_template(
         "gig_responses.html",
         band_id=band_id,
         gig=gig,
         responses=responses,
+        response_rows=response_rows,
+        parts=part_rows,
+        players=[dict(player) for player in band_players],
         response_options=["Unanswered", "Available", "Not Available", "Unsure yet"],
         summary=summary,
     )
