@@ -18,74 +18,90 @@
   </div>
 </div>
 
+{% if has_rehearsals %}
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#admin-gigs-panel" type="button" role="tab" aria-selected="true">Gigs</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#admin-rehearsals-panel" type="button" role="tab" aria-selected="false">Rehearsals</button>
+  </li>
+</ul>
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="admin-gigs-panel" role="tabpanel">
+{% endif %}
+    <h3>Existing Gigs</h3>
+    <div class="admin-gig-list mb-3" id="gigs-list">
+      {% for gig in gigs %}
+      <section class="card card-body admin-gig-card" data-gig-id="{{ gig['id'] }}">
+        <div class="admin-gig-card-fields">
+          <div class="admin-gig-field">
+            <input class="form-control form-control-sm fld-date" type="date" value="{{ gig['gig_date'] }}">
+          </div>
+          <div class="admin-gig-field">
+            <input class="form-control form-control-sm fld-start" type="time" value="{{ gig['start_time'] }}">
+          </div>
+          <div class="admin-gig-field">
+            <input class="form-control form-control-sm fld-end" type="time" value="{{ gig['end_time'] }}">
+          </div>
+          <div class="admin-gig-field admin-gig-field-location">
+            <input class="form-control form-control-sm fld-location" value="{{ gig['location'] }}">
+          </div>
+          <div class="admin-gig-field">
+            <select class="form-select form-select-sm fld-status">
+              <option {% if gig['status']=='Unconfirmed' %}selected{% endif %}>Unconfirmed</option>
+              <option {% if gig['status']=='Confirmed' %}selected{% endif %}>Confirmed</option>
+            </select>
+          </div>
+        </div>
 
-<h3>Existing Gigs</h3>
-<div class="admin-gig-list mb-3" id="gigs-list">
-  {% for gig in gigs %}
-  <section class="card card-body admin-gig-card" data-gig-id="{{ gig['id'] }}">
-    <div class="admin-gig-card-fields">
-      <div class="admin-gig-field">
-        <input class="form-control form-control-sm fld-date" type="date" value="{{ gig['gig_date'] }}">
-      </div>
-      <div class="admin-gig-field">
-        <input class="form-control form-control-sm fld-start" type="time" value="{{ gig['start_time'] }}">
-      </div>
-      <div class="admin-gig-field">
-        <input class="form-control form-control-sm fld-end" type="time" value="{{ gig['end_time'] }}">
-      </div>
-      <div class="admin-gig-field admin-gig-field-location">
-        <input class="form-control form-control-sm fld-location" value="{{ gig['location'] }}">
-      </div>
-      <div class="admin-gig-field">
-        <select class="form-select form-select-sm fld-status">
-          <option {% if gig['status']=='Unconfirmed' %}selected{% endif %}>Unconfirmed</option>
-          <option {% if gig['status']=='Confirmed' %}selected{% endif %}>Confirmed</option>
-        </select>
-      </div>
+        <div class="admin-gig-card-meta">
+          <div class="admin-gig-card-section">
+            <div class="response-summary admin-response-summary">
+              <span class="response-summary-item response-summary-item-available">{{ gig['available_count'] }} Available</span>
+              <span class="response-summary-item response-summary-item-not-available">{{ gig['not_available_count'] }} Not Available</span>
+              <span class="response-summary-item">{{ gig['unsure_count'] }} Not sure</span>
+              <span class="response-summary-item">{{ gig['unanswered_count'] }} Unanswered</span>
+            </div>
+          </div>
+
+          <div class="admin-gig-card-section">
+            <div class="admin-gig-actions">
+              <button class="btn btn-sm btn-secondary manage-parts">Edit Lineup</button>
+              <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Responses</a>
+              <button class="btn btn-sm btn-danger delete-gig">Delete</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      {% endfor %}
     </div>
-
-    <div class="admin-gig-card-meta">
-      <div class="admin-gig-card-section">
-        <div class="response-summary admin-response-summary">
-          <span class="response-summary-item response-summary-item-available">{{ gig['available_count'] }} Available</span>
-          <span class="response-summary-item response-summary-item-not-available">{{ gig['not_available_count'] }} Not Available</span>
-          <span class="response-summary-item">{{ gig['unsure_count'] }} Not sure</span>
-          <span class="response-summary-item">{{ gig['unanswered_count'] }} Unanswered</span>
+{% if has_rehearsals %}
+  </div>
+  <div class="tab-pane fade" id="admin-rehearsals-panel" role="tabpanel">
+    <h3>Upcoming Rehearsals</h3>
+    <div class="list-group mb-3" id="rehearsals-list">
+      {% for rehearsal in rehearsals %}
+      <div class="list-group-item admin-rehearsal-card d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+          <strong>{{ rehearsal['rehearsal_date']|human_date }}</strong>
+          {% if band['rehearsal_location'] %}<span class="text-muted"> | {{ band['rehearsal_location'] }}</span>{% endif %}
+          {% if rehearsal['is_cancelled'] %}<span class="badge text-bg-danger ms-2">Cancelled</span>{% endif %}
+          <div class="response-summary admin-response-summary mt-2">
+            <span class="response-summary-item response-summary-item-available">{{ rehearsal['available_count'] }} Available</span>
+            <span class="response-summary-item response-summary-item-not-available">{{ rehearsal['not_available_count'] }} Not Available</span>
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary manage-rehearsal" data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}">
+            Manage Players ({{ rehearsal['added_count'] }} added / {{ rehearsal['removed_count'] }} removed)
+          </button>
         </div>
       </div>
-
-      <div class="admin-gig-card-section">
-        <div class="admin-gig-actions">
-          <button class="btn btn-sm btn-secondary manage-parts">Edit Lineup</button>
-          <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Responses</a>
-          <button class="btn btn-sm btn-danger delete-gig">Delete</button>
-        </div>
-      </div>
-    </div>
-  </section>
-  {% endfor %}
-</div>
-
-<h3 class="mt-4">Upcoming Rehearsals</h3>
-{% if band['rehearsal_enabled'] and band['rehearsal_weekday'] is not none %}
-<div class="list-group mb-3" id="rehearsals-list">
-  {% for rehearsal in rehearsals %}
-  <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
-    <div>
-      <strong>{{ rehearsal['rehearsal_date']|human_date }}</strong>
-      {% if band['rehearsal_location'] %}<span class="text-muted"> | {{ band['rehearsal_location'] }}</span>{% endif %}
-      {% if rehearsal['is_cancelled'] %}<span class="badge text-bg-danger ms-2">Cancelled</span>{% endif %}
-    </div>
-    <div class="d-flex gap-2">
-      <button class="btn btn-sm btn-outline-secondary manage-rehearsal" data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}">
-        Manage Players ({{ rehearsal['added_count'] }} added / {{ rehearsal['removed_count'] }} removed)
-      </button>
+      {% endfor %}
     </div>
   </div>
-  {% endfor %}
 </div>
-{% else %}
-<div class="alert alert-info">Weekly rehearsals are disabled for this band. Enable them in Band Setup.</div>
 {% endif %}
 
 <div class="modal fade" id="partsModal" tabindex="-1">

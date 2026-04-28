@@ -5,7 +5,7 @@ const dashboardCardClasses = [
   'dashboard-gig-card-unanswered',
 ];
 
-function applyDashboardGigCardStyle(select) {
+function applyDashboardCardStyle(select) {
   const card = select.closest('.dashboard-gig-card');
   if (!card) return;
   card.classList.remove(...dashboardCardClasses);
@@ -13,12 +13,12 @@ function applyDashboardGigCardStyle(select) {
 }
 
 document.querySelectorAll('.availability-select').forEach((select) => {
-  applyDashboardGigCardStyle(select);
+  applyDashboardCardStyle(select);
   select.addEventListener('change', async (e) => {
     const parent = e.target.closest('.availability-control');
     const gigId = parent.dataset.gigId;
     const previousValue = e.target.dataset.previousValue || '';
-    applyDashboardGigCardStyle(e.target);
+    applyDashboardCardStyle(e.target);
     const res = await fetch(`/api/gig/${gigId}/availability`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -26,7 +26,7 @@ document.querySelectorAll('.availability-select').forEach((select) => {
     });
     if (!res.ok) {
       e.target.value = previousValue;
-      applyDashboardGigCardStyle(e.target);
+      applyDashboardCardStyle(e.target);
       alert('Could not update availability.');
       return;
     }
@@ -37,9 +37,11 @@ document.querySelectorAll('.availability-select').forEach((select) => {
 
 document.querySelectorAll('.rehearsal-availability-select').forEach((select) => {
   select.dataset.previousValue = select.value;
+  applyDashboardCardStyle(select);
   select.addEventListener('change', async (e) => {
     const parent = e.target.closest('.rehearsal-availability-control');
     const previousValue = e.target.dataset.previousValue || 'Available';
+    applyDashboardCardStyle(e.target);
     const payload = {
       band_id: Number(parent.dataset.bandId),
       rehearsal_date: parent.dataset.rehearsalDate,
@@ -52,6 +54,7 @@ document.querySelectorAll('.rehearsal-availability-select').forEach((select) => 
     });
     if (!res.ok) {
       e.target.value = previousValue;
+      applyDashboardCardStyle(e.target);
       alert('Could not update rehearsal availability.');
       return;
     }

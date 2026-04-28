@@ -11,15 +11,15 @@
   <div class="{% if admin_bands %}col-lg-8{% else %}col-12{% endif %}">
     <ul class="nav nav-tabs mb-3" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#gigs-panel" type="button" role="tab">Gigs</button>
+        <button class="nav-link {% if active_tab == 'gigs' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#gigs-panel" type="button" role="tab" aria-selected="{% if active_tab == 'gigs' %}true{% else %}false{% endif %}">Gigs</button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#rehearsals-panel" type="button" role="tab">Rehearsals</button>
+        <button class="nav-link {% if active_tab == 'rehearsals' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#rehearsals-panel" type="button" role="tab" aria-selected="{% if active_tab == 'rehearsals' %}true{% else %}false{% endif %}">Rehearsals</button>
       </li>
     </ul>
 
     <div class="tab-content">
-      <div class="tab-pane fade show active" id="gigs-panel" role="tabpanel">
+      <div class="tab-pane fade {% if active_tab == 'gigs' %}show active{% endif %}" id="gigs-panel" role="tabpanel">
         {% if gigs %}
         <h2>Your Gigs</h2>
         <div class="list-group mb-4 mb-lg-0">
@@ -48,7 +48,7 @@
         {% endif %}
       </div>
 
-      <div class="tab-pane fade" id="rehearsals-panel" role="tabpanel">
+      <div class="tab-pane fade {% if active_tab == 'rehearsals' %}show active{% endif %}" id="rehearsals-panel" role="tabpanel">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
           <h2 class="mb-0">Rehearsals</h2>
           <form method="get" class="d-flex gap-2 align-items-center">
@@ -60,12 +60,13 @@
               {% endfor %}
             </select>
             <input type="hidden" name="rehearsal_page" value="1">
+            <input type="hidden" name="tab" value="rehearsals">
           </form>
         </div>
         {% if rehearsals %}
         <div class="list-group">
           {% for rehearsal in rehearsals %}
-          <div class="list-group-item dashboard-rehearsal-card {% if rehearsal['is_cancelled'] %}rehearsal-cancelled{% endif %}">
+          <div class="list-group-item dashboard-gig-card dashboard-rehearsal-card dashboard-gig-card-{{ rehearsal['availability_status']|lower|replace(' ', '-') }} {% if rehearsal['is_cancelled'] %}rehearsal-cancelled{% endif %}">
             <div class="d-flex flex-wrap justify-content-between gap-2">
               <div>
                 <h5 class="mb-1">{{ rehearsal['band_name'] }} {% if rehearsal['is_cancelled'] %}<span class="badge text-bg-danger">Cancelled</span>{% endif %}</h5>
@@ -84,12 +85,12 @@
         </div>
         <div class="d-flex justify-content-between mt-3">
           {% if rehearsal_page > 1 %}
-          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard', rehearsal_page=rehearsal_page-1, rehearsal_band_id=selected_rehearsal_band_id or '') }}">Previous</a>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard', tab='rehearsals', rehearsal_page=rehearsal_page-1, rehearsal_band_id=selected_rehearsal_band_id or '') }}">Previous</a>
           {% else %}
           <span></span>
           {% endif %}
           {% if has_more_rehearsals %}
-          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard', rehearsal_page=rehearsal_page+1, rehearsal_band_id=selected_rehearsal_band_id or '') }}">Next</a>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard', tab='rehearsals', rehearsal_page=rehearsal_page+1, rehearsal_band_id=selected_rehearsal_band_id or '') }}">Next</a>
           {% endif %}
         </div>
         {% else %}

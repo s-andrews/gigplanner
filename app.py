@@ -1029,6 +1029,9 @@ def dashboard():
     user = current_user()
     db = get_db()
     calendar_token = ensure_calendar_token(user["id"])
+    active_tab = request.args.get("tab", "gigs").strip().lower()
+    if active_tab not in {"gigs", "rehearsals"}:
+        active_tab = "gigs"
     rehearsal_band_filter = request.args.get("rehearsal_band_id", "").strip()
     try:
         rehearsal_page = max(int(request.args.get("rehearsal_page", "1") or 1), 1)
@@ -1160,6 +1163,7 @@ def dashboard():
     has_more_rehearsals = end_index < len(rehearsal_rows)
     return render_template(
         "dashboard.html",
+        active_tab=active_tab,
         gigs=gigs,
         rehearsals=paged_rehearsals,
         rehearsal_bands=rehearsal_bands,
@@ -1729,10 +1733,12 @@ def band_admin(band_id):
     ).fetchall()
     parts = db.execute("SELECT * FROM parts WHERE band_id = ? ORDER BY name", (band_id,)).fetchall()
     rehearsal_rows = []
-    if band["rehearsal_enabled"] and band["rehearsal_weekday"] is not None:
+    has_rehearsals = band["rehearsal_enabled"] and band["rehearsal_weekday"] is not None
+    if has_rehearsals:
         rehearsal_dates = generate_rehearsal_dates(date.today(), int(band["rehearsal_weekday"]), 12)
         date_values = [entry.isoformat() for entry in rehearsal_dates]
         placeholders = ",".join(["?"] * len(date_values))
+        regular_player_ids = {player["id"] for player in players if player["is_regular"]}
         cancellations = db.execute(
             f"""
             SELECT rehearsal_date
@@ -1757,19 +1763,52 @@ def band_admin(band_id):
             row["rehearsal_date"]: {"added_count": row["added_count"], "removed_count": row["removed_count"]}
             for row in override_rows
         }
+        detail_override_rows = db.execute(
+            f"""
+            SELECT rehearsal_date, user_id, is_included
+            FROM rehearsal_player_overrides
+            WHERE band_id = ? AND rehearsal_date IN ({placeholders})
+            """,
+            (band_id, *date_values),
+        ).fetchall()
+        included_players_by_date = {rehearsal_date: set(regular_player_ids) for rehearsal_date in date_values}
+        for row in detail_override_rows:
+            scheduled_players = included_players_by_date.setdefault(row["rehearsal_date"], set(regular_player_ids))
+            if row["is_included"]:
+                scheduled_players.add(row["user_id"])
+            else:
+                scheduled_players.discard(row["user_id"])
+        unavailable_rows = db.execute(
+            f"""
+            SELECT rehearsal_date, user_id
+            FROM rehearsal_unavailability
+            WHERE band_id = ? AND rehearsal_date IN ({placeholders})
+            """,
+            (band_id, *date_values),
+        ).fetchall()
+        unavailable_by_date = {}
+        for row in unavailable_rows:
+            unavailable_by_date.setdefault(row["rehearsal_date"], set()).add(row["user_id"])
         for rehearsal_date in date_values:
             counts = override_map.get(rehearsal_date, {"added_count": 0, "removed_count": 0})
+            scheduled_players = included_players_by_date.get(rehearsal_date, set(regular_player_ids))
+            unavailable_players = unavailable_by_date.get(rehearsal_date, set())
+            not_available_count = sum(1 for user_id in scheduled_players if user_id in unavailable_players)
+            available_count = len(scheduled_players) - not_available_count
             rehearsal_rows.append(
                 {
                     "rehearsal_date": rehearsal_date,
                     "is_cancelled": rehearsal_date in cancellation_set,
                     "added_count": counts["added_count"] or 0,
                     "removed_count": counts["removed_count"] or 0,
+                    "available_count": available_count,
+                    "not_available_count": not_available_count,
                 }
             )
     return render_template(
         "band_admin.html",
         band=band,
+        has_rehearsals=has_rehearsals,
         gigs=gigs,
         rehearsals=rehearsal_rows,
         players=[dict(player) for player in players],
