@@ -2,7 +2,7 @@ import os
 import secrets
 import sqlite3
 import smtplib
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from functools import wraps
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -356,6 +356,15 @@ def get_timezone_options():
 
 
 TIMEZONE_OPTIONS = get_timezone_options()
+WEEKDAY_OPTIONS = [
+    (0, "Monday"),
+    (1, "Tuesday"),
+    (2, "Wednesday"),
+    (3, "Thursday"),
+    (4, "Friday"),
+    (5, "Saturday"),
+    (6, "Sunday"),
+]
 
 
 def normalize_band_timezone(value):
@@ -367,6 +376,24 @@ def normalize_band_timezone(value):
     except ZoneInfoNotFoundError:
         return None
     return timezone_name
+
+
+def parse_weekday(value):
+    try:
+        weekday = int(value)
+    except (TypeError, ValueError):
+        return None
+    return weekday if 0 <= weekday <= 6 else None
+
+
+def next_weekday_on_or_after(start_date, target_weekday):
+    days_ahead = (target_weekday - start_date.weekday()) % 7
+    return start_date + timedelta(days=days_ahead)
+
+
+def generate_rehearsal_dates(start_date, target_weekday, count):
+    first = next_weekday_on_or_after(start_date, target_weekday)
+    return [first + timedelta(days=7 * index) for index in range(count)]
 
 
 def validate_password_complexity(password):
@@ -454,6 +481,9 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             timezone TEXT NOT NULL DEFAULT 'Europe/London',
+            rehearsal_enabled INTEGER NOT NULL DEFAULT 0,
+            rehearsal_weekday INTEGER,
+            rehearsal_location TEXT,
             created_by INTEGER NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY(created_by) REFERENCES users(id)
@@ -480,6 +510,7 @@ def init_db():
             user_id INTEGER NOT NULL,
             instruments_played TEXT,
             is_co_admin INTEGER NOT NULL DEFAULT 0,
+            is_regular INTEGER NOT NULL DEFAULT 1,
             UNIQUE (band_id, user_id),
             FOREIGN KEY(band_id) REFERENCES bands(id) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -526,6 +557,40 @@ def init_db():
             FOREIGN KEY(gig_id) REFERENCES gigs(id) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS rehearsal_cancellations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            band_id INTEGER NOT NULL,
+            rehearsal_date TEXT NOT NULL,
+            created_by INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (band_id, rehearsal_date),
+            FOREIGN KEY(band_id) REFERENCES bands(id) ON DELETE CASCADE,
+            FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS rehearsal_unavailability (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            band_id INTEGER NOT NULL,
+            rehearsal_date TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (band_id, rehearsal_date, user_id),
+            FOREIGN KEY(band_id) REFERENCES bands(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS rehearsal_player_overrides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            band_id INTEGER NOT NULL,
+            rehearsal_date TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            is_included INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (band_id, rehearsal_date, user_id),
+            FOREIGN KEY(band_id) REFERENCES bands(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
         """
     )
     user_columns = {row[1] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
@@ -538,10 +603,26 @@ def init_db():
         cur.execute(
             f"ALTER TABLE bands ADD COLUMN timezone TEXT NOT NULL DEFAULT '{DEFAULT_BAND_TIMEZONE}'"
         )
+    if "rehearsal_enabled" not in band_columns:
+        cur.execute("ALTER TABLE bands ADD COLUMN rehearsal_enabled INTEGER NOT NULL DEFAULT 0")
+    if "rehearsal_weekday" not in band_columns:
+        cur.execute("ALTER TABLE bands ADD COLUMN rehearsal_weekday INTEGER")
+    if "rehearsal_location" not in band_columns:
+        cur.execute("ALTER TABLE bands ADD COLUMN rehearsal_location TEXT")
     cur.execute(
         "UPDATE bands SET timezone = ? WHERE timezone IS NULL OR TRIM(timezone) = ''",
         (DEFAULT_BAND_TIMEZONE,),
     )
+    cur.execute(
+        """
+        UPDATE bands
+        SET rehearsal_enabled = 0
+        WHERE rehearsal_enabled IS NULL
+        """
+    )
+    membership_columns = {row[1] for row in cur.execute("PRAGMA table_info(band_memberships)").fetchall()}
+    if "is_regular" not in membership_columns:
+        cur.execute("ALTER TABLE band_memberships ADD COLUMN is_regular INTEGER NOT NULL DEFAULT 1")
     users_sql_row = cur.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
     ).fetchone()
@@ -948,6 +1029,12 @@ def dashboard():
     user = current_user()
     db = get_db()
     calendar_token = ensure_calendar_token(user["id"])
+    rehearsal_band_filter = request.args.get("rehearsal_band_id", "").strip()
+    try:
+        rehearsal_page = max(int(request.args.get("rehearsal_page", "1") or 1), 1)
+    except ValueError:
+        rehearsal_page = 1
+    rehearsal_page_size = 8
     gigs = db.execute(
         """
         SELECT g.*, b.name AS band_name, b.timezone AS band_timezone,
@@ -974,9 +1061,111 @@ def dashboard():
         """,
         (user["id"],),
     ).fetchall()
+
+    rehearsal_bands = db.execute(
+        """
+        SELECT b.id, b.name, b.rehearsal_weekday, b.rehearsal_location
+        FROM bands b
+        JOIN band_memberships bm ON bm.band_id = b.id
+        WHERE bm.user_id = ?
+          AND b.rehearsal_enabled = 1
+          AND b.rehearsal_weekday IS NOT NULL
+        ORDER BY b.name
+        """,
+        (user["id"],),
+    ).fetchall()
+    selected_rehearsal_band_id = None
+    if rehearsal_band_filter:
+        try:
+            selected_rehearsal_band_id = int(rehearsal_band_filter)
+        except ValueError:
+            selected_rehearsal_band_id = None
+
+    memberships = db.execute(
+        """
+        SELECT bm.band_id, bm.is_regular
+        FROM band_memberships bm
+        WHERE bm.user_id = ?
+        """,
+        (user["id"],),
+    ).fetchall()
+    regular_by_band = {row["band_id"]: bool(row["is_regular"]) for row in memberships}
+    today = date.today()
+    horizon = 52
+    rehearsal_rows = []
+    for band in rehearsal_bands:
+        if selected_rehearsal_band_id and band["id"] != selected_rehearsal_band_id:
+            continue
+        rehearsal_dates = generate_rehearsal_dates(today, int(band["rehearsal_weekday"]), horizon)
+        for rehearsal_day in rehearsal_dates:
+            rehearsal_rows.append(
+                {
+                    "band_id": band["id"],
+                    "band_name": band["name"],
+                    "rehearsal_date": rehearsal_day.isoformat(),
+                    "rehearsal_location": band["rehearsal_location"] or "",
+                    "default_included": regular_by_band.get(band["id"], False),
+                }
+            )
+    rehearsal_rows.sort(key=lambda row: row["rehearsal_date"])
+    if rehearsal_rows:
+        keys = {(row["band_id"], row["rehearsal_date"]) for row in rehearsal_rows}
+        band_ids = sorted({band_id for band_id, _ in keys})
+        min_date = min(rehearsal_date for _, rehearsal_date in keys)
+        max_date = max(rehearsal_date for _, rehearsal_date in keys)
+        cancellation_rows = db.execute(
+            """
+            SELECT band_id, rehearsal_date
+            FROM rehearsal_cancellations
+            WHERE band_id IN ({placeholders}) AND rehearsal_date BETWEEN ? AND ?
+            """.format(placeholders=",".join(["?"] * len(band_ids))),
+            (*band_ids, min_date, max_date),
+        ).fetchall()
+        cancelled_set = {(row["band_id"], row["rehearsal_date"]) for row in cancellation_rows}
+        unavailability_rows = db.execute(
+            """
+            SELECT band_id, rehearsal_date
+            FROM rehearsal_unavailability
+            WHERE user_id = ?
+              AND band_id IN ({placeholders})
+              AND rehearsal_date BETWEEN ? AND ?
+            """.format(placeholders=",".join(["?"] * len(band_ids))),
+            (user["id"], *band_ids, min_date, max_date),
+        ).fetchall()
+        unavailable_set = {(row["band_id"], row["rehearsal_date"]) for row in unavailability_rows}
+        override_rows = db.execute(
+            """
+            SELECT band_id, rehearsal_date, is_included
+            FROM rehearsal_player_overrides
+            WHERE user_id = ?
+              AND band_id IN ({placeholders})
+              AND rehearsal_date BETWEEN ? AND ?
+            """.format(placeholders=",".join(["?"] * len(band_ids))),
+            (user["id"], *band_ids, min_date, max_date),
+        ).fetchall()
+        override_map = {
+            (row["band_id"], row["rehearsal_date"]): bool(row["is_included"]) for row in override_rows
+        }
+        for row in rehearsal_rows:
+            key = (row["band_id"], row["rehearsal_date"])
+            row["is_cancelled"] = key in cancelled_set
+            is_included = override_map.get(key, row["default_included"])
+            row["is_included"] = is_included
+            row["availability_status"] = "Not Available" if key in unavailable_set else "Available"
+        rehearsal_rows = [row for row in rehearsal_rows if row["is_included"]]
+
+    start_index = (rehearsal_page - 1) * rehearsal_page_size
+    end_index = start_index + rehearsal_page_size
+    paged_rehearsals = rehearsal_rows[start_index:end_index]
+    has_more_rehearsals = end_index < len(rehearsal_rows)
     return render_template(
         "dashboard.html",
         gigs=gigs,
+        rehearsals=paged_rehearsals,
+        rehearsal_bands=rehearsal_bands,
+        rehearsal_page=rehearsal_page,
+        has_more_rehearsals=has_more_rehearsals,
+        selected_rehearsal_band_id=selected_rehearsal_band_id,
         admin_bands=admin_bands,
         calendar_feed_url=url_for("calendar_feed_guide"),
         calendar_subscription_url=public_url(url_for("user_calendar_feed", token=calendar_token)),
@@ -1096,9 +1285,15 @@ def update_availability(gig_id):
 @login_required
 def create_band():
     selected_timezone = DEFAULT_BAND_TIMEZONE
+    rehearsal_enabled = False
+    rehearsal_weekday = None
+    rehearsal_location = ""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         selected_timezone = request.form.get("timezone", "")
+        rehearsal_enabled = request.form.get("rehearsal_enabled") == "on"
+        rehearsal_weekday = parse_weekday(request.form.get("rehearsal_weekday"))
+        rehearsal_location = request.form.get("rehearsal_location", "").strip()
         timezone_name = normalize_band_timezone(selected_timezone)
         if not name:
             return render_template(
@@ -1106,6 +1301,10 @@ def create_band():
                 error="Band name is required.",
                 timezone_options=TIMEZONE_OPTIONS,
                 selected_timezone=selected_timezone,
+                weekday_options=WEEKDAY_OPTIONS,
+                rehearsal_enabled=rehearsal_enabled,
+                rehearsal_weekday=rehearsal_weekday,
+                rehearsal_location=rehearsal_location,
             )
         if not timezone_name:
             return render_template(
@@ -1113,12 +1312,38 @@ def create_band():
                 error="Please choose a valid timezone for the band.",
                 timezone_options=TIMEZONE_OPTIONS,
                 selected_timezone=selected_timezone,
+                weekday_options=WEEKDAY_OPTIONS,
+                rehearsal_enabled=rehearsal_enabled,
+                rehearsal_weekday=rehearsal_weekday,
+                rehearsal_location=rehearsal_location,
+            )
+        if rehearsal_enabled and rehearsal_weekday is None:
+            return render_template(
+                "create_band.html",
+                error="Choose a rehearsal day of the week when rehearsals are enabled.",
+                timezone_options=TIMEZONE_OPTIONS,
+                selected_timezone=selected_timezone,
+                weekday_options=WEEKDAY_OPTIONS,
+                rehearsal_enabled=rehearsal_enabled,
+                rehearsal_weekday=rehearsal_weekday,
+                rehearsal_location=rehearsal_location,
             )
         db = get_db()
         uid = session["user_id"]
         cur = db.execute(
-            "INSERT INTO bands (name, timezone, created_by, created_at) VALUES (?, ?, ?, ?)",
-            (name, timezone_name, uid, utc_now_iso()),
+            """
+            INSERT INTO bands (name, timezone, rehearsal_enabled, rehearsal_weekday, rehearsal_location, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                timezone_name,
+                1 if rehearsal_enabled else 0,
+                rehearsal_weekday if rehearsal_enabled else None,
+                rehearsal_location if rehearsal_enabled else "",
+                uid,
+                utc_now_iso(),
+            ),
         )
         band_id = cur.lastrowid
         db.execute("INSERT INTO band_admins (band_id, user_id) VALUES (?, ?)", (band_id, uid))
@@ -1132,6 +1357,10 @@ def create_band():
         "create_band.html",
         timezone_options=TIMEZONE_OPTIONS,
         selected_timezone=selected_timezone,
+        weekday_options=WEEKDAY_OPTIONS,
+        rehearsal_enabled=rehearsal_enabled,
+        rehearsal_weekday=rehearsal_weekday,
+        rehearsal_location=rehearsal_location,
     )
 
 
@@ -1159,25 +1388,49 @@ def edit_band(band_id):
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         selected_timezone = request.form.get("timezone", "")
+        rehearsal_enabled = request.form.get("rehearsal_enabled") == "on"
+        rehearsal_weekday = parse_weekday(request.form.get("rehearsal_weekday"))
+        rehearsal_location = request.form.get("rehearsal_location", "").strip()
         timezone_name = normalize_band_timezone(selected_timezone)
         if not name:
             error = "Band name is required."
         elif not timezone_name:
             error = "Please choose a valid timezone for the band."
+        elif rehearsal_enabled and rehearsal_weekday is None:
+            error = "Choose a rehearsal day of the week when rehearsals are enabled."
         else:
             db.execute(
-                "UPDATE bands SET name = ?, timezone = ? WHERE id = ?",
-                (name, timezone_name, band_id),
+                """
+                UPDATE bands
+                SET name = ?, timezone = ?, rehearsal_enabled = ?, rehearsal_weekday = ?, rehearsal_location = ?
+                WHERE id = ?
+                """,
+                (
+                    name,
+                    timezone_name,
+                    1 if rehearsal_enabled else 0,
+                    rehearsal_weekday if rehearsal_enabled else None,
+                    rehearsal_location if rehearsal_enabled else "",
+                    band_id,
+                ),
             )
             db.commit()
             return redirect(url_for("dashboard"))
-        band = {**dict(band), "name": name, "timezone": selected_timezone}
+        band = {
+            **dict(band),
+            "name": name,
+            "timezone": selected_timezone,
+            "rehearsal_enabled": 1 if rehearsal_enabled else 0,
+            "rehearsal_weekday": rehearsal_weekday,
+            "rehearsal_location": rehearsal_location,
+        }
 
     return render_template(
         "edit_band.html",
         band=band,
         error=error,
         timezone_options=TIMEZONE_OPTIONS,
+        weekday_options=WEEKDAY_OPTIONS,
     )
 
 
@@ -1212,7 +1465,13 @@ def band_setup(band_id):
         """,
         (band_id,),
     ).fetchall()
-    return render_template("band_setup.html", band=band, parts=parts, players=players)
+    return render_template(
+        "band_setup.html",
+        band=band,
+        parts=parts,
+        players=players,
+        weekday_options=WEEKDAY_OPTIONS,
+    )
 
 
 @app.route("/api/band/<int:band_id>/part", methods=["POST"])
@@ -1339,6 +1598,14 @@ def delete_player_from_band(band_id, user_id):
         """,
         (user_id, band_id),
     )
+    db.execute(
+        "DELETE FROM rehearsal_unavailability WHERE band_id = ? AND user_id = ?",
+        (band_id, user_id),
+    )
+    db.execute(
+        "DELETE FROM rehearsal_player_overrides WHERE band_id = ? AND user_id = ?",
+        (band_id, user_id),
+    )
     db.execute("DELETE FROM band_memberships WHERE band_id = ? AND user_id = ?", (band_id, user_id))
     db.commit()
     return jsonify({"ok": True})
@@ -1366,6 +1633,46 @@ def set_coadmin(band_id, user_id):
             "DELETE FROM band_admins WHERE band_id = ? AND user_id = ?",
             (band_id, user_id),
         )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/band/<int:band_id>/player/<int:user_id>/regular", methods=["POST"])
+@login_required
+def set_regular_player(band_id, user_id):
+    uid = session["user_id"]
+    if not is_band_admin(band_id, uid):
+        return jsonify({"ok": False}), 403
+    enabled = bool(request.json.get("is_regular"))
+    db = get_db()
+    db.execute(
+        "UPDATE band_memberships SET is_regular = ? WHERE band_id = ? AND user_id = ?",
+        (1 if enabled else 0, band_id, user_id),
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/band/<int:band_id>/rehearsal-settings", methods=["POST"])
+@login_required
+def update_rehearsal_settings(band_id):
+    uid = session["user_id"]
+    if not is_band_admin(band_id, uid):
+        return jsonify({"ok": False}), 403
+    enabled = bool(request.json.get("enabled"))
+    weekday = parse_weekday(request.json.get("weekday"))
+    location = (request.json.get("location") or "").strip()
+    if enabled and weekday is None:
+        return jsonify({"ok": False, "error": "Weekday is required when rehearsals are enabled."}), 400
+    db = get_db()
+    db.execute(
+        """
+        UPDATE bands
+        SET rehearsal_enabled = ?, rehearsal_weekday = ?, rehearsal_location = ?
+        WHERE id = ?
+        """,
+        (1 if enabled else 0, weekday if enabled else None, location if enabled else "", band_id),
+    )
     db.commit()
     return jsonify({"ok": True})
 
@@ -1412,7 +1719,7 @@ def band_admin(band_id):
     ).fetchall()
     players = db.execute(
         """
-        SELECT u.id, u.name
+        SELECT u.id, u.name, bm.is_regular
         FROM band_memberships bm
         JOIN users u ON u.id = bm.user_id
         WHERE bm.band_id = ?
@@ -1421,12 +1728,53 @@ def band_admin(band_id):
         (band_id,),
     ).fetchall()
     parts = db.execute("SELECT * FROM parts WHERE band_id = ? ORDER BY name", (band_id,)).fetchall()
+    rehearsal_rows = []
+    if band["rehearsal_enabled"] and band["rehearsal_weekday"] is not None:
+        rehearsal_dates = generate_rehearsal_dates(date.today(), int(band["rehearsal_weekday"]), 12)
+        date_values = [entry.isoformat() for entry in rehearsal_dates]
+        placeholders = ",".join(["?"] * len(date_values))
+        cancellations = db.execute(
+            f"""
+            SELECT rehearsal_date
+            FROM rehearsal_cancellations
+            WHERE band_id = ? AND rehearsal_date IN ({placeholders})
+            """,
+            (band_id, *date_values),
+        ).fetchall()
+        cancellation_set = {row["rehearsal_date"] for row in cancellations}
+        override_rows = db.execute(
+            f"""
+            SELECT rehearsal_date,
+                   SUM(CASE WHEN is_included = 1 THEN 1 ELSE 0 END) AS added_count,
+                   SUM(CASE WHEN is_included = 0 THEN 1 ELSE 0 END) AS removed_count
+            FROM rehearsal_player_overrides
+            WHERE band_id = ? AND rehearsal_date IN ({placeholders})
+            GROUP BY rehearsal_date
+            """,
+            (band_id, *date_values),
+        ).fetchall()
+        override_map = {
+            row["rehearsal_date"]: {"added_count": row["added_count"], "removed_count": row["removed_count"]}
+            for row in override_rows
+        }
+        for rehearsal_date in date_values:
+            counts = override_map.get(rehearsal_date, {"added_count": 0, "removed_count": 0})
+            rehearsal_rows.append(
+                {
+                    "rehearsal_date": rehearsal_date,
+                    "is_cancelled": rehearsal_date in cancellation_set,
+                    "added_count": counts["added_count"] or 0,
+                    "removed_count": counts["removed_count"] or 0,
+                }
+            )
     return render_template(
         "band_admin.html",
         band=band,
         gigs=gigs,
+        rehearsals=rehearsal_rows,
         players=[dict(player) for player in players],
         parts=parts,
+        weekday_options=WEEKDAY_OPTIONS,
     )
 
 
@@ -1725,6 +2073,146 @@ def update_gig_part(gp_id):
             "UPDATE gig_parts SET part_name = ?, assigned_user_id = ? WHERE id = ?",
             (data.get("part_name", row["part_name"]), data.get("assigned_user_id") or None, gp_id),
         )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/rehearsal/availability", methods=["POST"])
+@login_required
+def update_rehearsal_availability():
+    user = current_user()
+    band_id = request.json.get("band_id")
+    rehearsal_date = (request.json.get("rehearsal_date") or "").strip()
+    is_available = bool(request.json.get("is_available"))
+    db = get_db()
+    membership = db.execute(
+        "SELECT 1 FROM band_memberships WHERE band_id = ? AND user_id = ?",
+        (band_id, user["id"]),
+    ).fetchone()
+    if not membership:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+    if is_available:
+        db.execute(
+            "DELETE FROM rehearsal_unavailability WHERE band_id = ? AND rehearsal_date = ? AND user_id = ?",
+            (band_id, rehearsal_date, user["id"]),
+        )
+    else:
+        db.execute(
+            """
+            INSERT INTO rehearsal_unavailability (band_id, rehearsal_date, user_id, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(band_id, rehearsal_date, user_id)
+            DO UPDATE SET updated_at = excluded.updated_at
+            """,
+            (band_id, rehearsal_date, user["id"], utc_now_iso()),
+        )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/band/<int:band_id>/rehearsal/<rehearsal_date>", methods=["GET"])
+@login_required
+def rehearsal_detail(band_id, rehearsal_date):
+    if not is_band_admin(band_id, session["user_id"]):
+        return jsonify({"ok": False}), 403
+    db = get_db()
+    players = db.execute(
+        """
+        SELECT u.id, u.name, bm.is_regular
+        FROM band_memberships bm
+        JOIN users u ON u.id = bm.user_id
+        WHERE bm.band_id = ?
+        ORDER BY u.name
+        """,
+        (band_id,),
+    ).fetchall()
+    overrides = db.execute(
+        """
+        SELECT user_id, is_included
+        FROM rehearsal_player_overrides
+        WHERE band_id = ? AND rehearsal_date = ?
+        """,
+        (band_id, rehearsal_date),
+    ).fetchall()
+    override_map = {row["user_id"]: bool(row["is_included"]) for row in overrides}
+    player_rows = []
+    for player in players:
+        scheduled = override_map.get(player["id"], bool(player["is_regular"]))
+        player_rows.append(
+            {
+                "id": player["id"],
+                "name": player["name"],
+                "is_regular": bool(player["is_regular"]),
+                "is_scheduled": scheduled,
+            }
+        )
+    cancellation = db.execute(
+        """
+        SELECT 1
+        FROM rehearsal_cancellations
+        WHERE band_id = ? AND rehearsal_date = ?
+        """,
+        (band_id, rehearsal_date),
+    ).fetchone()
+    return jsonify({"ok": True, "is_cancelled": bool(cancellation), "players": player_rows})
+
+
+@app.route("/api/band/<int:band_id>/rehearsal/<rehearsal_date>/cancel", methods=["POST"])
+@login_required
+def set_rehearsal_cancellation(band_id, rehearsal_date):
+    if not is_band_admin(band_id, session["user_id"]):
+        return jsonify({"ok": False}), 403
+    is_cancelled = bool(request.json.get("is_cancelled"))
+    db = get_db()
+    if is_cancelled:
+        db.execute(
+            """
+            INSERT INTO rehearsal_cancellations (band_id, rehearsal_date, created_by, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(band_id, rehearsal_date) DO UPDATE SET created_by = excluded.created_by, created_at = excluded.created_at
+            """,
+            (band_id, rehearsal_date, session["user_id"], utc_now_iso()),
+        )
+    else:
+        db.execute(
+            "DELETE FROM rehearsal_cancellations WHERE band_id = ? AND rehearsal_date = ?",
+            (band_id, rehearsal_date),
+        )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/band/<int:band_id>/rehearsal/<rehearsal_date>/players", methods=["POST"])
+@login_required
+def save_rehearsal_players(band_id, rehearsal_date):
+    if not is_band_admin(band_id, session["user_id"]):
+        return jsonify({"ok": False}), 403
+    scheduled_player_ids = request.json.get("scheduled_player_ids") or []
+    scheduled_player_ids = {int(player_id) for player_id in scheduled_player_ids}
+    db = get_db()
+    members = db.execute(
+        "SELECT user_id, is_regular FROM band_memberships WHERE band_id = ?",
+        (band_id,),
+    ).fetchall()
+    for member in members:
+        user_id = member["user_id"]
+        default_included = bool(member["is_regular"])
+        desired_included = user_id in scheduled_player_ids
+        if desired_included == default_included:
+            db.execute(
+                "DELETE FROM rehearsal_player_overrides WHERE band_id = ? AND rehearsal_date = ? AND user_id = ?",
+                (band_id, rehearsal_date, user_id),
+            )
+        else:
+            db.execute(
+                """
+                INSERT INTO rehearsal_player_overrides (band_id, rehearsal_date, user_id, is_included, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(band_id, rehearsal_date, user_id)
+                DO UPDATE SET is_included = excluded.is_included, updated_at = excluded.updated_at
+                """,
+                (band_id, rehearsal_date, user_id, 1 if desired_included else 0, utc_now_iso()),
+            )
     db.commit()
     return jsonify({"ok": True})
 

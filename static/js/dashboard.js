@@ -34,3 +34,27 @@ document.querySelectorAll('.availability-select').forEach((select) => {
   });
   select.dataset.previousValue = select.value;
 });
+
+document.querySelectorAll('.rehearsal-availability-select').forEach((select) => {
+  select.dataset.previousValue = select.value;
+  select.addEventListener('change', async (e) => {
+    const parent = e.target.closest('.rehearsal-availability-control');
+    const previousValue = e.target.dataset.previousValue || 'Available';
+    const payload = {
+      band_id: Number(parent.dataset.bandId),
+      rehearsal_date: parent.dataset.rehearsalDate,
+      is_available: e.target.value === 'Available',
+    };
+    const res = await fetch('/api/rehearsal/availability', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      e.target.value = previousValue;
+      alert('Could not update rehearsal availability.');
+      return;
+    }
+    e.target.dataset.previousValue = e.target.value;
+  });
+});

@@ -1,6 +1,7 @@
 const bandId = window.BAND_ID;
 const players = window.PLAYERS;
 let activeGigId = null;
+let activeRehearsalDate = null;
 
 async function createGig() {
   const payload = {
@@ -149,4 +150,52 @@ document.getElementById('add-gig-part-btn')?.addEventListener('click', async () 
   });
   document.getElementById('new-gig-part-name').value = '';
   loadParts(activeGigId);
+});
+
+async function openRehearsalModal(rehearsalDate) {
+  activeRehearsalDate = rehearsalDate;
+  const res = await fetch(`/api/band/${bandId}/rehearsal/${rehearsalDate}`);
+  const data = await res.json();
+  if (!data.ok) {
+    alert('Could not load rehearsal details.');
+    return;
+  }
+  document.getElementById('rehearsal-cancelled-toggle').checked = data.is_cancelled;
+  const container = document.getElementById('rehearsal-players-list');
+  container.innerHTML = data.players.map((player) => `
+    <label class="d-flex justify-content-between align-items-center mb-2">
+      <span>${player.name} ${player.is_regular ? '<small class="text-muted">(Regular)</small>' : '<small class="text-muted">(Extra)</small>'}</span>
+      <input class="form-check-input rehearsal-player-toggle" type="checkbox" value="${player.id}" ${player.is_scheduled ? 'checked' : ''}>
+    </label>
+  `).join('');
+  const modal = new bootstrap.Modal(document.getElementById('rehearsalModal'));
+  modal.show();
+}
+
+document.querySelectorAll('.manage-rehearsal').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    const rehearsalDate = e.target.dataset.rehearsalDate;
+    openRehearsalModal(rehearsalDate);
+  });
+});
+
+document.getElementById('save-rehearsal-btn')?.addEventListener('click', async () => {
+  if (!activeRehearsalDate) return;
+  const scheduledPlayerIds = Array.from(document.querySelectorAll('.rehearsal-player-toggle:checked')).map((el) => Number(el.value));
+  const cancelled = document.getElementById('rehearsal-cancelled-toggle').checked;
+  const cancelRes = await fetch(`/api/band/${bandId}/rehearsal/${activeRehearsalDate}/cancel`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({is_cancelled: cancelled}),
+  });
+  const playersRes = await fetch(`/api/band/${bandId}/rehearsal/${activeRehearsalDate}/players`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({scheduled_player_ids: scheduledPlayerIds}),
+  });
+  if (!cancelRes.ok || !playersRes.ok) {
+    alert('Could not save rehearsal changes.');
+    return;
+  }
+  location.reload();
 });
