@@ -445,6 +445,17 @@ def timezone_label(value):
     return str(value).replace("_", " ")
 
 
+@app.template_filter("time_label")
+def time_label(value):
+    if not value:
+        return ""
+    try:
+        parsed = datetime.strptime(value, "%H:%M")
+    except ValueError:
+        return value
+    return parsed.strftime("%H:%M")
+
+
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DATABASE)
@@ -484,6 +495,8 @@ def init_db():
             rehearsal_enabled INTEGER NOT NULL DEFAULT 0,
             rehearsal_weekday INTEGER,
             rehearsal_location TEXT,
+            rehearsal_start_time TEXT,
+            rehearsal_end_time TEXT,
             created_by INTEGER NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY(created_by) REFERENCES users(id)
@@ -609,6 +622,10 @@ def init_db():
         cur.execute("ALTER TABLE bands ADD COLUMN rehearsal_weekday INTEGER")
     if "rehearsal_location" not in band_columns:
         cur.execute("ALTER TABLE bands ADD COLUMN rehearsal_location TEXT")
+    if "rehearsal_start_time" not in band_columns:
+        cur.execute("ALTER TABLE bands ADD COLUMN rehearsal_start_time TEXT")
+    if "rehearsal_end_time" not in band_columns:
+        cur.execute("ALTER TABLE bands ADD COLUMN rehearsal_end_time TEXT")
     cur.execute(
         "UPDATE bands SET timezone = ? WHERE timezone IS NULL OR TRIM(timezone) = ''",
         (DEFAULT_BAND_TIMEZONE,),
@@ -702,6 +719,30 @@ def current_user():
         return None
     db = get_db()
     return db.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+
+
+def get_regular_player_ids(db, band_id):
+    rows = db.execute(
+        """
+        SELECT DISTINCT pd.user_id
+        FROM part_defaults pd
+        JOIN parts p ON p.id = pd.part_id
+        WHERE p.band_id = ?
+          AND pd.user_id IS NOT NULL
+        """,
+        (band_id,),
+    ).fetchall()
+    return {row["user_id"] for row in rows}
+
+
+def parse_time_value(value):
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%H:%M").strftime("%H:%M")
+    except ValueError:
+        return None
 
 
 def generate_calendar_token():
@@ -1067,7 +1108,8 @@ def dashboard():
 
     rehearsal_bands = db.execute(
         """
-        SELECT b.id, b.name, b.rehearsal_weekday, b.rehearsal_location
+        SELECT b.id, b.name, b.rehearsal_weekday, b.rehearsal_location,
+               b.rehearsal_start_time, b.rehearsal_end_time, b.timezone
         FROM bands b
         JOIN band_memberships bm ON bm.band_id = b.id
         WHERE bm.user_id = ?
@@ -1084,15 +1126,16 @@ def dashboard():
         except ValueError:
             selected_rehearsal_band_id = None
 
-    memberships = db.execute(
+    regular_memberships = db.execute(
         """
-        SELECT bm.band_id, bm.is_regular
-        FROM band_memberships bm
-        WHERE bm.user_id = ?
+        SELECT DISTINCT p.band_id
+        FROM part_defaults pd
+        JOIN parts p ON p.id = pd.part_id
+        WHERE pd.user_id = ?
         """,
         (user["id"],),
     ).fetchall()
-    regular_by_band = {row["band_id"]: bool(row["is_regular"]) for row in memberships}
+    regular_by_band = {row["band_id"]: True for row in regular_memberships}
     today = date.today()
     horizon = 52
     rehearsal_rows = []
@@ -1107,6 +1150,9 @@ def dashboard():
                     "band_name": band["name"],
                     "rehearsal_date": rehearsal_day.isoformat(),
                     "rehearsal_location": band["rehearsal_location"] or "",
+                    "rehearsal_start_time": band["rehearsal_start_time"] or "",
+                    "rehearsal_end_time": band["rehearsal_end_time"] or "",
+                    "band_timezone": band["timezone"] or DEFAULT_BAND_TIMEZONE,
                     "default_included": regular_by_band.get(band["id"], False),
                 }
             )
@@ -1207,6 +1253,92 @@ def user_calendar_feed(token):
         """,
         (user["id"],),
     ).fetchall()
+    rehearsal_bands = db.execute(
+        """
+        SELECT b.id, b.name, b.rehearsal_weekday, b.rehearsal_location,
+               b.rehearsal_start_time, b.rehearsal_end_time, b.timezone
+        FROM bands b
+        JOIN band_memberships bm ON bm.band_id = b.id
+        WHERE bm.user_id = ?
+          AND b.rehearsal_enabled = 1
+          AND b.rehearsal_weekday IS NOT NULL
+        ORDER BY b.name
+        """,
+        (user["id"],),
+    ).fetchall()
+    regular_memberships = db.execute(
+        """
+        SELECT DISTINCT p.band_id
+        FROM part_defaults pd
+        JOIN parts p ON p.id = pd.part_id
+        WHERE pd.user_id = ?
+        """,
+        (user["id"],),
+    ).fetchall()
+    regular_by_band = {row["band_id"]: True for row in regular_memberships}
+    rehearsal_rows = []
+    rehearsal_horizon = 52
+    for band in rehearsal_bands:
+        rehearsal_dates = generate_rehearsal_dates(date.today(), int(band["rehearsal_weekday"]), rehearsal_horizon)
+        for rehearsal_day in rehearsal_dates:
+            rehearsal_rows.append(
+                {
+                    "band_id": band["id"],
+                    "band_name": band["name"],
+                    "rehearsal_date": rehearsal_day.isoformat(),
+                    "rehearsal_location": band["rehearsal_location"] or "",
+                    "rehearsal_start_time": band["rehearsal_start_time"] or "",
+                    "rehearsal_end_time": band["rehearsal_end_time"] or "",
+                    "band_timezone": band["timezone"] or DEFAULT_BAND_TIMEZONE,
+                    "default_included": regular_by_band.get(band["id"], False),
+                }
+            )
+    rehearsal_rows.sort(key=lambda row: row["rehearsal_date"])
+    if rehearsal_rows:
+        keys = {(row["band_id"], row["rehearsal_date"]) for row in rehearsal_rows}
+        band_ids = sorted({band_id for band_id, _ in keys})
+        min_date = min(rehearsal_date for _, rehearsal_date in keys)
+        max_date = max(rehearsal_date for _, rehearsal_date in keys)
+        placeholders = ",".join(["?"] * len(band_ids))
+        cancellation_rows = db.execute(
+            f"""
+            SELECT band_id, rehearsal_date
+            FROM rehearsal_cancellations
+            WHERE band_id IN ({placeholders}) AND rehearsal_date BETWEEN ? AND ?
+            """,
+            (*band_ids, min_date, max_date),
+        ).fetchall()
+        cancelled_set = {(row["band_id"], row["rehearsal_date"]) for row in cancellation_rows}
+        unavailability_rows = db.execute(
+            f"""
+            SELECT band_id, rehearsal_date
+            FROM rehearsal_unavailability
+            WHERE user_id = ?
+              AND band_id IN ({placeholders})
+              AND rehearsal_date BETWEEN ? AND ?
+            """,
+            (user["id"], *band_ids, min_date, max_date),
+        ).fetchall()
+        unavailable_set = {(row["band_id"], row["rehearsal_date"]) for row in unavailability_rows}
+        override_rows = db.execute(
+            f"""
+            SELECT band_id, rehearsal_date, is_included
+            FROM rehearsal_player_overrides
+            WHERE user_id = ?
+              AND band_id IN ({placeholders})
+              AND rehearsal_date BETWEEN ? AND ?
+            """,
+            (user["id"], *band_ids, min_date, max_date),
+        ).fetchall()
+        override_map = {
+            (row["band_id"], row["rehearsal_date"]): bool(row["is_included"]) for row in override_rows
+        }
+        for row in rehearsal_rows:
+            key = (row["band_id"], row["rehearsal_date"])
+            row["is_cancelled"] = key in cancelled_set
+            row["is_included"] = override_map.get(key, row["default_included"])
+            row["availability_status"] = "Not Available" if key in unavailable_set else "Available"
+        rehearsal_rows = [row for row in rehearsal_rows if row["is_included"]]
 
     lines = [
         "BEGIN:VCALENDAR",
@@ -1244,6 +1376,61 @@ def user_calendar_feed(token):
                 "END:VEVENT",
             ]
         )
+
+    for rehearsal in rehearsal_rows:
+        band_timezone = normalize_band_timezone(rehearsal["band_timezone"]) or DEFAULT_BAND_TIMEZONE
+        summary = f"{rehearsal['band_name']} Rehearsal"
+        if rehearsal["is_cancelled"]:
+            summary = f"{summary} (Cancelled)"
+        has_times = bool(rehearsal["rehearsal_start_time"] and rehearsal["rehearsal_end_time"])
+        description_parts = [f"Availability: {rehearsal['availability_status']}"]
+        if has_times:
+            description_parts.append(
+                f"Time: {rehearsal['rehearsal_start_time']} - {rehearsal['rehearsal_end_time']}"
+            )
+        else:
+            description_parts.append("Time: Not configured")
+        description_parts.append(f"Band timezone: {band_timezone}")
+        if rehearsal["rehearsal_location"]:
+            description_parts.insert(0, f"Location: {rehearsal['rehearsal_location']}")
+        description = "\\n".join(description_parts)
+
+        event_lines = [
+            "BEGIN:VEVENT",
+            f"UID:rehearsal-{rehearsal['band_id']}-{rehearsal['rehearsal_date']}-user-{user['id']}@gigplanner.uk",
+            f"DTSTAMP:{now_stamp}",
+            f"SUMMARY:{ical_escape(summary)}",
+            f"LOCATION:{ical_escape(rehearsal['rehearsal_location'])}",
+            f"DESCRIPTION:{ical_escape(description)}",
+        ]
+        if has_times:
+            start_dt = datetime.strptime(
+                f"{rehearsal['rehearsal_date']} {rehearsal['rehearsal_start_time']}",
+                "%Y-%m-%d %H:%M",
+            )
+            end_dt = datetime.strptime(
+                f"{rehearsal['rehearsal_date']} {rehearsal['rehearsal_end_time']}",
+                "%Y-%m-%d %H:%M",
+            )
+            event_lines.extend(
+                [
+                    f"DTSTART;TZID={ical_escape(band_timezone)}:{ical_format_local(start_dt)}",
+                    f"DTEND;TZID={ical_escape(band_timezone)}:{ical_format_local(end_dt)}",
+                ]
+            )
+        else:
+            rehearsal_date = datetime.strptime(rehearsal["rehearsal_date"], "%Y-%m-%d").date()
+            next_day = rehearsal_date + timedelta(days=1)
+            event_lines.extend(
+                [
+                    f"DTSTART;VALUE=DATE:{rehearsal_date.strftime('%Y%m%d')}",
+                    f"DTEND;VALUE=DATE:{next_day.strftime('%Y%m%d')}",
+                ]
+            )
+        if rehearsal["is_cancelled"]:
+            event_lines.append("STATUS:CANCELLED")
+        event_lines.append("END:VEVENT")
+        lines.extend(event_lines)
 
     lines.append("END:VCALENDAR")
     return Response(
@@ -1292,12 +1479,18 @@ def create_band():
     rehearsal_enabled = False
     rehearsal_weekday = None
     rehearsal_location = ""
+    rehearsal_start_time = ""
+    rehearsal_end_time = ""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         selected_timezone = request.form.get("timezone", "")
         rehearsal_enabled = request.form.get("rehearsal_enabled") == "on"
         rehearsal_weekday = parse_weekday(request.form.get("rehearsal_weekday"))
         rehearsal_location = request.form.get("rehearsal_location", "").strip()
+        rehearsal_start_time = (request.form.get("rehearsal_start_time") or "").strip()
+        rehearsal_end_time = (request.form.get("rehearsal_end_time") or "").strip()
+        parsed_rehearsal_start_time = parse_time_value(rehearsal_start_time)
+        parsed_rehearsal_end_time = parse_time_value(rehearsal_end_time)
         timezone_name = normalize_band_timezone(selected_timezone)
         if not name:
             return render_template(
@@ -1309,6 +1502,8 @@ def create_band():
                 rehearsal_enabled=rehearsal_enabled,
                 rehearsal_weekday=rehearsal_weekday,
                 rehearsal_location=rehearsal_location,
+                rehearsal_start_time=rehearsal_start_time,
+                rehearsal_end_time=rehearsal_end_time,
             )
         if not timezone_name:
             return render_template(
@@ -1320,6 +1515,8 @@ def create_band():
                 rehearsal_enabled=rehearsal_enabled,
                 rehearsal_weekday=rehearsal_weekday,
                 rehearsal_location=rehearsal_location,
+                rehearsal_start_time=rehearsal_start_time,
+                rehearsal_end_time=rehearsal_end_time,
             )
         if rehearsal_enabled and rehearsal_weekday is None:
             return render_template(
@@ -1331,13 +1528,44 @@ def create_band():
                 rehearsal_enabled=rehearsal_enabled,
                 rehearsal_weekday=rehearsal_weekday,
                 rehearsal_location=rehearsal_location,
+                rehearsal_start_time=rehearsal_start_time,
+                rehearsal_end_time=rehearsal_end_time,
+            )
+        if rehearsal_enabled and (parsed_rehearsal_start_time is None or parsed_rehearsal_end_time is None):
+            return render_template(
+                "create_band.html",
+                error="Choose valid rehearsal start and end times when rehearsals are enabled.",
+                timezone_options=TIMEZONE_OPTIONS,
+                selected_timezone=selected_timezone,
+                weekday_options=WEEKDAY_OPTIONS,
+                rehearsal_enabled=rehearsal_enabled,
+                rehearsal_weekday=rehearsal_weekday,
+                rehearsal_location=rehearsal_location,
+                rehearsal_start_time=rehearsal_start_time,
+                rehearsal_end_time=rehearsal_end_time,
+            )
+        if rehearsal_enabled and parsed_rehearsal_start_time >= parsed_rehearsal_end_time:
+            return render_template(
+                "create_band.html",
+                error="Rehearsal end time must be later than the start time.",
+                timezone_options=TIMEZONE_OPTIONS,
+                selected_timezone=selected_timezone,
+                weekday_options=WEEKDAY_OPTIONS,
+                rehearsal_enabled=rehearsal_enabled,
+                rehearsal_weekday=rehearsal_weekday,
+                rehearsal_location=rehearsal_location,
+                rehearsal_start_time=rehearsal_start_time,
+                rehearsal_end_time=rehearsal_end_time,
             )
         db = get_db()
         uid = session["user_id"]
         cur = db.execute(
             """
-            INSERT INTO bands (name, timezone, rehearsal_enabled, rehearsal_weekday, rehearsal_location, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO bands (
+                name, timezone, rehearsal_enabled, rehearsal_weekday, rehearsal_location,
+                rehearsal_start_time, rehearsal_end_time, created_by, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -1345,6 +1573,8 @@ def create_band():
                 1 if rehearsal_enabled else 0,
                 rehearsal_weekday if rehearsal_enabled else None,
                 rehearsal_location if rehearsal_enabled else "",
+                parsed_rehearsal_start_time if rehearsal_enabled else None,
+                parsed_rehearsal_end_time if rehearsal_enabled else None,
                 uid,
                 utc_now_iso(),
             ),
@@ -1365,6 +1595,8 @@ def create_band():
         rehearsal_enabled=rehearsal_enabled,
         rehearsal_weekday=rehearsal_weekday,
         rehearsal_location=rehearsal_location,
+        rehearsal_start_time=rehearsal_start_time,
+        rehearsal_end_time=rehearsal_end_time,
     )
 
 
@@ -1395,6 +1627,10 @@ def edit_band(band_id):
         rehearsal_enabled = request.form.get("rehearsal_enabled") == "on"
         rehearsal_weekday = parse_weekday(request.form.get("rehearsal_weekday"))
         rehearsal_location = request.form.get("rehearsal_location", "").strip()
+        rehearsal_start_time = (request.form.get("rehearsal_start_time") or "").strip()
+        rehearsal_end_time = (request.form.get("rehearsal_end_time") or "").strip()
+        parsed_rehearsal_start_time = parse_time_value(rehearsal_start_time)
+        parsed_rehearsal_end_time = parse_time_value(rehearsal_end_time)
         timezone_name = normalize_band_timezone(selected_timezone)
         if not name:
             error = "Band name is required."
@@ -1402,11 +1638,16 @@ def edit_band(band_id):
             error = "Please choose a valid timezone for the band."
         elif rehearsal_enabled and rehearsal_weekday is None:
             error = "Choose a rehearsal day of the week when rehearsals are enabled."
+        elif rehearsal_enabled and (parsed_rehearsal_start_time is None or parsed_rehearsal_end_time is None):
+            error = "Choose valid rehearsal start and end times when rehearsals are enabled."
+        elif rehearsal_enabled and parsed_rehearsal_start_time >= parsed_rehearsal_end_time:
+            error = "Rehearsal end time must be later than the start time."
         else:
             db.execute(
                 """
                 UPDATE bands
-                SET name = ?, timezone = ?, rehearsal_enabled = ?, rehearsal_weekday = ?, rehearsal_location = ?
+                SET name = ?, timezone = ?, rehearsal_enabled = ?, rehearsal_weekday = ?, rehearsal_location = ?,
+                    rehearsal_start_time = ?, rehearsal_end_time = ?
                 WHERE id = ?
                 """,
                 (
@@ -1415,6 +1656,8 @@ def edit_band(band_id):
                     1 if rehearsal_enabled else 0,
                     rehearsal_weekday if rehearsal_enabled else None,
                     rehearsal_location if rehearsal_enabled else "",
+                    parsed_rehearsal_start_time if rehearsal_enabled else None,
+                    parsed_rehearsal_end_time if rehearsal_enabled else None,
                     band_id,
                 ),
             )
@@ -1427,6 +1670,8 @@ def edit_band(band_id):
             "rehearsal_enabled": 1 if rehearsal_enabled else 0,
             "rehearsal_weekday": rehearsal_weekday,
             "rehearsal_location": rehearsal_location,
+            "rehearsal_start_time": rehearsal_start_time,
+            "rehearsal_end_time": rehearsal_end_time,
         }
 
     return render_template(
@@ -1460,7 +1705,7 @@ def band_setup(band_id):
     ).fetchall()
     players = db.execute(
         """
-        SELECT bm.*, u.name, u.email, u.phone,
+        SELECT bm.user_id, bm.is_co_admin, u.name, u.email, u.phone,
                COALESCE(NULLIF(bm.instruments_played, ''), u.instruments_played, '') AS instruments_played
         FROM band_memberships bm
         JOIN users u ON u.id = bm.user_id
@@ -1641,22 +1886,6 @@ def set_coadmin(band_id, user_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/band/<int:band_id>/player/<int:user_id>/regular", methods=["POST"])
-@login_required
-def set_regular_player(band_id, user_id):
-    uid = session["user_id"]
-    if not is_band_admin(band_id, uid):
-        return jsonify({"ok": False}), 403
-    enabled = bool(request.json.get("is_regular"))
-    db = get_db()
-    db.execute(
-        "UPDATE band_memberships SET is_regular = ? WHERE band_id = ? AND user_id = ?",
-        (1 if enabled else 0, band_id, user_id),
-    )
-    db.commit()
-    return jsonify({"ok": True})
-
-
 @app.route("/api/band/<int:band_id>/rehearsal-settings", methods=["POST"])
 @login_required
 def update_rehearsal_settings(band_id):
@@ -1666,16 +1895,30 @@ def update_rehearsal_settings(band_id):
     enabled = bool(request.json.get("enabled"))
     weekday = parse_weekday(request.json.get("weekday"))
     location = (request.json.get("location") or "").strip()
+    start_time = parse_time_value(request.json.get("start_time"))
+    end_time = parse_time_value(request.json.get("end_time"))
     if enabled and weekday is None:
         return jsonify({"ok": False, "error": "Weekday is required when rehearsals are enabled."}), 400
+    if enabled and (start_time is None or end_time is None):
+        return jsonify({"ok": False, "error": "Start and end times are required when rehearsals are enabled."}), 400
+    if enabled and start_time >= end_time:
+        return jsonify({"ok": False, "error": "Rehearsal end time must be later than the start time."}), 400
     db = get_db()
     db.execute(
         """
         UPDATE bands
-        SET rehearsal_enabled = ?, rehearsal_weekday = ?, rehearsal_location = ?
+        SET rehearsal_enabled = ?, rehearsal_weekday = ?, rehearsal_location = ?,
+            rehearsal_start_time = ?, rehearsal_end_time = ?
         WHERE id = ?
         """,
-        (1 if enabled else 0, weekday if enabled else None, location if enabled else "", band_id),
+        (
+            1 if enabled else 0,
+            weekday if enabled else None,
+            location if enabled else "",
+            start_time if enabled else None,
+            end_time if enabled else None,
+            band_id,
+        ),
     )
     db.commit()
     return jsonify({"ok": True})
@@ -1723,7 +1966,14 @@ def band_admin(band_id):
     ).fetchall()
     players = db.execute(
         """
-        SELECT u.id, u.name, bm.is_regular
+        SELECT u.id, u.name,
+               CASE WHEN EXISTS (
+                   SELECT 1
+                   FROM part_defaults pd
+                   JOIN parts p ON p.id = pd.part_id
+                   WHERE p.band_id = bm.band_id
+                     AND pd.user_id = u.id
+               ) THEN 1 ELSE 0 END AS is_regular
         FROM band_memberships bm
         JOIN users u ON u.id = bm.user_id
         WHERE bm.band_id = ?
@@ -1738,7 +1988,7 @@ def band_admin(band_id):
         rehearsal_dates = generate_rehearsal_dates(date.today(), int(band["rehearsal_weekday"]), 12)
         date_values = [entry.isoformat() for entry in rehearsal_dates]
         placeholders = ",".join(["?"] * len(date_values))
-        regular_player_ids = {player["id"] for player in players if player["is_regular"]}
+        regular_player_ids = get_regular_player_ids(db, band_id)
         cancellations = db.execute(
             f"""
             SELECT rehearsal_date
@@ -2157,7 +2407,14 @@ def rehearsal_detail(band_id, rehearsal_date):
     db = get_db()
     players = db.execute(
         """
-        SELECT u.id, u.name, bm.is_regular
+        SELECT u.id, u.name,
+               CASE WHEN EXISTS (
+                   SELECT 1
+                   FROM part_defaults pd
+                   JOIN parts p ON p.id = pd.part_id
+                   WHERE p.band_id = bm.band_id
+                     AND pd.user_id = u.id
+               ) THEN 1 ELSE 0 END AS is_regular
         FROM band_memberships bm
         JOIN users u ON u.id = bm.user_id
         WHERE bm.band_id = ?
@@ -2229,13 +2486,14 @@ def save_rehearsal_players(band_id, rehearsal_date):
     scheduled_player_ids = request.json.get("scheduled_player_ids") or []
     scheduled_player_ids = {int(player_id) for player_id in scheduled_player_ids}
     db = get_db()
+    regular_player_ids = get_regular_player_ids(db, band_id)
     members = db.execute(
-        "SELECT user_id, is_regular FROM band_memberships WHERE band_id = ?",
+        "SELECT user_id FROM band_memberships WHERE band_id = ?",
         (band_id,),
     ).fetchall()
     for member in members:
         user_id = member["user_id"]
-        default_included = bool(member["is_regular"])
+        default_included = user_id in regular_player_ids
         desired_included = user_id in scheduled_player_ids
         if desired_included == default_included:
             db.execute(

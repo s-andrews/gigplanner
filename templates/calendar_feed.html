@@ -13,7 +13,7 @@
         or any calendar app that supports subscribing to an iCalendar feed.
       </p>
       <p class="mb-3">
-        Once subscribed, your calendar app should refresh automatically when gigs are added,
+        Once subscribed, your calendar app should refresh automatically when gigs or rehearsals are added,
         removed, or updated in Gig Planner.
       </p>
       <div class="mb-3">
@@ -21,8 +21,9 @@
         <input class="form-control" value="{{ calendar_subscription_url }}" readonly>
       </div>
       <div class="alert alert-info mb-0">
-        <div>Keep this link private. Anyone with this URL can see the gigs in your personal dashboard calendar.</div>
+        <div>Keep this link private. Anyone with this URL can see the gigs and rehearsals in your personal dashboard calendar.</div>
         <div class="mt-2">Gig times are emitted using the timezone configured for the band each gig belongs to.</div>
+        <div class="mt-2">Rehearsal times are emitted using the timezone configured for the band. If a rehearsal time has not been set yet, it will appear as an all-day event.</div>
       </div>
     </div>
   </div>

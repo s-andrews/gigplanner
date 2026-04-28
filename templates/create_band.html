@@ -36,6 +36,16 @@
       <label class="form-label">Rehearsal Location</label>
       <input name="rehearsal_location" class="form-control" value="{{ rehearsal_location or '' }}" placeholder="Optional location">
     </div>
+    <div class="row g-2">
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Rehearsal Start Time</label>
+        <input name="rehearsal_start_time" type="time" class="form-control" value="{{ rehearsal_start_time or '' }}">
+      </div>
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Rehearsal End Time</label>
+        <input name="rehearsal_end_time" type="time" class="form-control" value="{{ rehearsal_end_time or '' }}">
+      </div>
+    </div>
   </div>
   <button class="btn btn-secondary">Create Band</button>
 </form>

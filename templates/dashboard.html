@@ -70,7 +70,12 @@
             <div class="d-flex flex-wrap justify-content-between gap-2">
               <div>
                 <h5 class="mb-1">{{ rehearsal['band_name'] }} {% if rehearsal['is_cancelled'] %}<span class="badge text-bg-danger">Cancelled</span>{% endif %}</h5>
-                <div>{{ rehearsal['rehearsal_date']|human_date }}{% if rehearsal['rehearsal_location'] %} | {{ rehearsal['rehearsal_location'] }}{% endif %}</div>
+                <div>
+                  {{ rehearsal['rehearsal_date']|human_date }}
+                  {% if rehearsal['rehearsal_start_time'] and rehearsal['rehearsal_end_time'] %} | {{ rehearsal['rehearsal_start_time']|time_label }} - {{ rehearsal['rehearsal_end_time']|time_label }}{% endif %}
+                  {% if rehearsal['rehearsal_location'] %} | {{ rehearsal['rehearsal_location'] }}{% endif %}
+                </div>
+                <small class="text-muted">Timezone: {{ rehearsal['band_timezone']|timezone_label }}</small>
               </div>
               <div class="rehearsal-availability-control" data-band-id="{{ rehearsal['band_id'] }}" data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}">
                 <label class="form-label mb-0">Availability</label>

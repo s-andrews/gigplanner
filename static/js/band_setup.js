@@ -53,16 +53,6 @@ document.querySelectorAll('.co-admin-toggle').forEach((el) => {
   });
 });
 
-document.querySelectorAll('.regular-toggle').forEach((el) => {
-  el.addEventListener('change', async (e) => {
-    await fetch(`/api/band/${bandId}/player/${e.target.dataset.userId}/regular`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({is_regular: e.target.checked})
-    });
-  });
-});
-
 const rehearsalEnabledInput = document.getElementById('rehearsal-enabled');
 const rehearsalFields = document.getElementById('rehearsal-settings-fields');
 rehearsalEnabledInput?.addEventListener('change', () => {
@@ -74,6 +64,8 @@ document.getElementById('save-rehearsal-settings-btn')?.addEventListener('click'
     enabled: rehearsalEnabledInput?.checked,
     weekday: document.getElementById('rehearsal-weekday').value || null,
     location: document.getElementById('rehearsal-location').value,
+    start_time: document.getElementById('rehearsal-start-time').value || null,
+    end_time: document.getElementById('rehearsal-end-time').value || null,
   };
   const res = await fetch(`/api/band/${bandId}/rehearsal-settings`, {
     method: 'POST',

@@ -29,6 +29,14 @@
             <label class="form-label">Location</label>
             <input id="rehearsal-location" class="form-control" value="{{ band['rehearsal_location'] or '' }}" placeholder="Optional location">
           </div>
+          <div class="col-md-3">
+            <label class="form-label">Start Time</label>
+            <input id="rehearsal-start-time" type="time" class="form-control" value="{{ band['rehearsal_start_time'] or '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">End Time</label>
+            <input id="rehearsal-end-time" type="time" class="form-control" value="{{ band['rehearsal_end_time'] or '' }}">
+          </div>
         </div>
       </div>
       <button id="save-rehearsal-settings-btn" class="btn btn-secondary mt-3">Save Rehearsal Settings</button>
@@ -76,16 +84,13 @@
 
       <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Name</th><th>Email</th><th>Instruments</th><th>Regular Seat</th><th>Co-admin</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Instruments</th><th>Co-admin</th><th>Actions</th></tr></thead>
         <tbody>
           {% for player in players %}
           <tr data-user-id="{{ player['user_id'] }}">
             <td>{{ player['name'] }}</td>
             <td>{{ player['email'] }}</td>
             <td>{{ player['instruments_played'] }}</td>
-            <td>
-              <input class="form-check-input regular-toggle" type="checkbox" data-user-id="{{ player['user_id'] }}" {% if player['is_regular'] %}checked{% endif %}>
-            </td>
             <td>
               <input class="form-check-input co-admin-toggle" type="checkbox" data-user-id="{{ player['user_id'] }}" {% if player['is_co_admin'] %}checked{% endif %}>
             </td>

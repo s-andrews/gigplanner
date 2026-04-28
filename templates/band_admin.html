@@ -85,6 +85,7 @@
       <div class="list-group-item admin-rehearsal-card d-flex flex-wrap justify-content-between align-items-center gap-3">
         <div>
           <strong>{{ rehearsal['rehearsal_date']|human_date }}</strong>
+          {% if band['rehearsal_start_time'] and band['rehearsal_end_time'] %}<span class="text-muted"> | {{ band['rehearsal_start_time']|time_label }} - {{ band['rehearsal_end_time']|time_label }}</span>{% endif %}
           {% if band['rehearsal_location'] %}<span class="text-muted"> | {{ band['rehearsal_location'] }}</span>{% endif %}
           {% if rehearsal['is_cancelled'] %}<span class="badge text-bg-danger ms-2">Cancelled</span>{% endif %}
           <div class="response-summary admin-response-summary mt-2">
