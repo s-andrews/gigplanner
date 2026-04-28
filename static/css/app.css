@@ -346,6 +346,22 @@ h3 {
   background-color: rgba(15, 23, 42, 0.9);
 }
 
+.rehearsal-player-row {
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background-color: rgba(15, 23, 42, 0.42);
+}
+
+.rehearsal-player-row-unavailable {
+  background-color: rgba(136, 78, 82, 0.4);
+  border-color: rgba(217, 136, 142, 0.55);
+}
+
+.rehearsal-player-status {
+  color: #f5b7bd;
+}
+
 .btn-danger, .btn-danger:hover, .btn-danger:active, .btn-danger:visited  {
     background-color: #8064A2 !important;
     border-color: #8064A2 !important;

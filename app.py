@@ -2431,6 +2431,15 @@ def rehearsal_detail(band_id, rehearsal_date):
         (band_id, rehearsal_date),
     ).fetchall()
     override_map = {row["user_id"]: bool(row["is_included"]) for row in overrides}
+    unavailable_rows = db.execute(
+        """
+        SELECT user_id
+        FROM rehearsal_unavailability
+        WHERE band_id = ? AND rehearsal_date = ?
+        """,
+        (band_id, rehearsal_date),
+    ).fetchall()
+    unavailable_user_ids = {row["user_id"] for row in unavailable_rows}
     player_rows = []
     for player in players:
         scheduled = override_map.get(player["id"], bool(player["is_regular"]))
@@ -2440,6 +2449,7 @@ def rehearsal_detail(band_id, rehearsal_date):
                 "name": player["name"],
                 "is_regular": bool(player["is_regular"]),
                 "is_scheduled": scheduled,
+                "is_unavailable": player["id"] in unavailable_user_ids,
             }
         )
     cancellation = db.execute(

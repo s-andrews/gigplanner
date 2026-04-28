@@ -3,6 +3,23 @@ const players = window.PLAYERS;
 let activeGigId = null;
 let activeRehearsalDate = null;
 
+function activateAdminTabFromHash() {
+  if (!window.bootstrap || !location.hash) return;
+  const tabButton = document.querySelector(`[data-bs-target="${location.hash}"]`);
+  if (!tabButton) return;
+  bootstrap.Tab.getOrCreateInstance(tabButton).show();
+}
+
+document.querySelectorAll('.nav-tabs [data-bs-toggle="tab"]').forEach((tabButton) => {
+  tabButton.addEventListener('shown.bs.tab', (event) => {
+    const target = event.target.dataset.bsTarget;
+    if (!target) return;
+    history.replaceState(null, '', `${location.pathname}${location.search}${target}`);
+  });
+});
+
+activateAdminTabFromHash();
+
 async function createGig() {
   const payload = {
     gig_date: document.getElementById('gig-date').value,
@@ -163,8 +180,8 @@ async function openRehearsalModal(rehearsalDate) {
   document.getElementById('rehearsal-cancelled-toggle').checked = data.is_cancelled;
   const container = document.getElementById('rehearsal-players-list');
   container.innerHTML = data.players.map((player) => `
-    <label class="d-flex justify-content-between align-items-center mb-2">
-      <span>${player.name} ${player.is_regular ? '<small class="text-muted">(Regular)</small>' : '<small class="text-muted">(Extra)</small>'}</span>
+    <label class="rehearsal-player-row d-flex justify-content-between align-items-center mb-2 ${player.is_unavailable ? 'rehearsal-player-row-unavailable' : ''}">
+      <span>${player.name} ${player.is_regular ? '<small class="text-muted">(Regular)</small>' : '<small class="text-muted">(Extra)</small>'} ${player.is_unavailable ? '<small class="rehearsal-player-status">(Unavailable)</small>' : ''}</span>
       <input class="form-check-input rehearsal-player-toggle" type="checkbox" value="${player.id}" ${player.is_scheduled ? 'checked' : ''}>
     </label>
   `).join('');
@@ -197,5 +214,6 @@ document.getElementById('save-rehearsal-btn')?.addEventListener('click', async (
     alert('Could not save rehearsal changes.');
     return;
   }
+  location.hash = '#admin-rehearsals-panel';
   location.reload();
 });
