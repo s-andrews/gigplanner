@@ -21,6 +21,25 @@
     </select>
     <div class="form-text">All gig dates and times for this band are interpreted using this timezone.</div>
   </div>
+  <div class="form-check form-switch mb-3">
+    <input class="form-check-input" type="checkbox" id="rehearsal-enabled" name="rehearsal_enabled" {% if band['rehearsal_enabled'] %}checked{% endif %}>
+    <label class="form-check-label" for="rehearsal-enabled">Enable weekly rehearsals</label>
+  </div>
+  <div id="rehearsal-fields" class="{% if not band['rehearsal_enabled'] %}d-none{% endif %}">
+    <div class="mb-3">
+      <label class="form-label">Rehearsal Day</label>
+      <select class="form-select" name="rehearsal_weekday">
+        <option value="">-- Select day --</option>
+        {% for weekday_value, weekday_label in weekday_options %}
+        <option value="{{ weekday_value }}" {% if band['rehearsal_weekday'] == weekday_value %}selected{% endif %}>{{ weekday_label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Rehearsal Location</label>
+      <input name="rehearsal_location" class="form-control" value="{{ band['rehearsal_location'] or '' }}">
+    </div>
+  </div>
   <div class="alert alert-warning mb-3">
     Changing the timezone will not change the dates and times already entered for existing gigs. Please review existing gigs after making this change.
   </div>
@@ -28,4 +47,13 @@
 </form>
 </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+const rehearsalToggle = document.getElementById('rehearsal-enabled');
+const rehearsalFields = document.getElementById('rehearsal-fields');
+rehearsalToggle?.addEventListener('change', (event) => {
+  rehearsalFields?.classList.toggle('d-none', !event.target.checked);
+});
+</script>
 {% endblock %}

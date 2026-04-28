@@ -312,6 +312,11 @@ h3 {
   box-shadow: 0 0 0 2px rgba(245, 208, 92, 0.35), 0 0 22px rgba(245, 208, 92, 0.18);
 }
 
+.dashboard-rehearsal-card.rehearsal-cancelled {
+  border: 2px solid rgba(220, 53, 69, 0.8);
+  background: rgba(220, 53, 69, 0.12);
+}
+
 .btn-danger, .btn-danger:hover, .btn-danger:active, .btn-danger:visited  {
     background-color: #8064A2 !important;
     border-color: #8064A2 !important;

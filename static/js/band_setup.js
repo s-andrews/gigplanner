@@ -53,6 +53,41 @@ document.querySelectorAll('.co-admin-toggle').forEach((el) => {
   });
 });
 
+document.querySelectorAll('.regular-toggle').forEach((el) => {
+  el.addEventListener('change', async (e) => {
+    await fetch(`/api/band/${bandId}/player/${e.target.dataset.userId}/regular`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({is_regular: e.target.checked})
+    });
+  });
+});
+
+const rehearsalEnabledInput = document.getElementById('rehearsal-enabled');
+const rehearsalFields = document.getElementById('rehearsal-settings-fields');
+rehearsalEnabledInput?.addEventListener('change', () => {
+  rehearsalFields?.classList.toggle('d-none', !rehearsalEnabledInput.checked);
+});
+
+document.getElementById('save-rehearsal-settings-btn')?.addEventListener('click', async () => {
+  const payload = {
+    enabled: rehearsalEnabledInput?.checked,
+    weekday: document.getElementById('rehearsal-weekday').value || null,
+    location: document.getElementById('rehearsal-location').value,
+  };
+  const res = await fetch(`/api/band/${bandId}/rehearsal-settings`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Could not save rehearsal settings');
+    return;
+  }
+  alert('Rehearsal settings saved.');
+});
+
 document.querySelectorAll('.default-part-select').forEach((el) => {
   el.addEventListener('change', async (e) => {
     const partId = e.target.dataset.partId;
