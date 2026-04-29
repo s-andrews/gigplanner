@@ -23,8 +23,6 @@
       <a class="btn btn-secondary btn-sm" href="{{ url_for('dashboard') }}">Dashboard</a>
       {% if current_band %}
       <span class="text-light small px-1">{{ current_band['name'] }}</span>
-      <a class="btn btn-secondary btn-sm" href="{{ url_for('band_admin', band_id=current_band['id']) }}">Gig Admin</a>
-      <a class="btn btn-secondary btn-sm" href="{{ url_for('band_setup', band_id=current_band['id']) }}">Band Setup</a>
       {% endif %}
     </div>
     <div class="ms-auto d-flex flex-wrap align-items-center gap-2">

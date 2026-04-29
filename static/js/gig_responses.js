@@ -78,7 +78,7 @@ function getPlayerStatus(userId) {
 function syncPlayerAvailabilityUI(userId, status) {
   document.querySelectorAll(`.gp-player[data-user-id="${userId}"]`).forEach((select) => {
     select.value = userId;
-    applyResponseSelectStyle(select);
+    applyResponseSelectStyleForStatus(select, status);
   });
   document.querySelectorAll(`.gig-part-availability-select[data-user-id="${userId}"]`).forEach((select) => {
     select.value = status;
@@ -95,7 +95,7 @@ async function updatePlayerAvailability(userId, nextStatus, previousStatus) {
   });
   if (!res.ok) {
     document.querySelectorAll(`.gp-player[data-user-id="${userId}"]`).forEach((select) => {
-      applyResponseSelectStyle(select);
+      applyResponseSelectStyleForStatus(select, previousStatus);
     });
     document.querySelectorAll(`.gig-part-availability-select[data-user-id="${userId}"]`).forEach((select) => {
       select.value = previousStatus;
@@ -131,10 +131,12 @@ function renderParts(parts) {
       <div class="gig-part-row" data-gp-id="${part.id}">
         <div class="gig-part-main">
           <input class="form-control gp-name" value="${part.part_name}">
-          <select class="form-select gp-player response-select response-select-${status.toLowerCase().replaceAll(' ', '-')}" data-user-id="${part.assigned_user_id || ''}">${buildPlayerOptions(part.assigned_user_id)}</select>
-          <span class="gig-part-player-meta">
-            <span class="gig-part-dep ${isDep ? '' : 'd-none'}">Dep</span>
-          </span>
+          <div class="gig-part-player-slot">
+            <span class="gig-part-player-meta">
+              <span class="gig-part-dep ${isDep ? '' : 'd-none'}">Dep</span>
+            </span>
+            <select class="form-select gp-player response-select response-select-${status.toLowerCase().replaceAll(' ', '-')}" data-user-id="${part.assigned_user_id || ''}">${buildPlayerOptions(part.assigned_user_id)}</select>
+          </div>
           <div class="gig-part-availability-wrap">
             <select class="form-select gig-part-availability-select response-select response-select-${status.toLowerCase().replaceAll(' ', '-')}" data-user-id="${part.assigned_user_id || ''}" ${part.assigned_user_id ? '' : 'disabled'}>
               <option value="Unanswered" ${status === 'Unanswered' ? 'selected' : ''}>Unanswered</option>
