@@ -24,6 +24,9 @@ app.config["SMTP_USE_TLS"] = os.environ.get("SMTP_USE_TLS", "").lower() in {"1",
 app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", "noreply@gigplanner.uk")
 app.config["BASE_URL"] = os.environ.get("BASE_URL", "https://gigplanner.uk")
 app.config["PASSWORD_RESET_MAX_AGE"] = int(os.environ.get("PASSWORD_RESET_MAX_AGE", "86400"))
+app.config["REGISTRATION_VERIFICATION_MAX_AGE"] = int(
+    os.environ.get("REGISTRATION_VERIFICATION_MAX_AGE", "86400")
+)
 
 
 def utc_now_iso():
@@ -815,6 +818,19 @@ def load_password_reset_token(token):
     return data
 
 
+def generate_registration_verification_token(payload):
+    return get_reset_serializer().dumps(payload, salt="registration-verification")
+
+
+def load_registration_verification_token(token):
+    data = get_reset_serializer().loads(
+        token,
+        salt="registration-verification",
+        max_age=app.config["REGISTRATION_VERIFICATION_MAX_AGE"],
+    )
+    return data
+
+
 def send_email(subject, recipients, body):
     message = EmailMessage()
     message["Subject"] = subject
@@ -841,6 +857,28 @@ def send_password_reset_email(user):
         "If you have any problems, please email contact@gigplanner.uk.\n"
     )
     send_email("Gig Planner password reset", [user["email"]], body)
+
+
+def send_registration_verification_email(name, email, token):
+    verification_link = public_url(url_for("verify_registration", token=token))
+    body = (
+        f"Hi {name},\n\n"
+        "Please confirm your email address to finish creating your Gig Planner account.\n\n"
+        f"Use this link to verify your email:\n{verification_link}\n\n"
+        "If you did not request this, you can ignore this email.\n\n"
+        "If you have any problems, please email contact@gigplanner.uk.\n"
+    )
+    send_email("Gig Planner email verification", [email], body)
+
+
+def render_register_template(error=None, success=None, form_data=None):
+    return render_template(
+        "register.html",
+        error=error,
+        success=success,
+        form_data=form_data or {},
+        show_navbar=False,
+    )
 
 
 def ical_escape(value):
@@ -877,29 +915,114 @@ def register():
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
         phone = request.form.get("phone", "").strip()
+        instruments = request.form.get("instruments_played", "").strip()
         password = request.form.get("password", "")
-        if not all([name, email, password]):
-            return render_template("register.html", error="Name, email and password are required.")
+        confirm_password = request.form.get("confirm_password", "")
+        form_data = {
+            "name": name,
+            "email": email,
+            "phone": phone,
+            "instruments_played": instruments,
+        }
+        if not all([name, email, password, confirm_password]):
+            return render_register_template(
+                error="Name, email, and both password fields are required.",
+                form_data=form_data,
+            )
+        if password != confirm_password:
+            return render_register_template(
+                error="The passwords do not match.",
+                form_data=form_data,
+            )
         password_error = validate_password_complexity(password)
         if password_error:
-            return render_template("register.html", error=password_error)
+            return render_register_template(error=password_error, form_data=form_data)
         db = get_db()
-        exists = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        exists = db.execute("SELECT id, password_hash FROM users WHERE email = ?", (email,)).fetchone()
         if exists:
-            existing_user = db.execute("SELECT password_hash FROM users WHERE id = ?", (exists["id"],)).fetchone()
-            if existing_user and not existing_user["password_hash"]:
-                return render_template(
-                    "register.html",
-                    error="An account with that email has already been added. Go to Login and Reset your password to claim it.",
+            if exists["password_hash"]:
+                return render_register_template(
+                    error="An account with that email already exists.",
+                    form_data=form_data,
                 )
-            return render_template("register.html", error="An account with that email already exists.")
-        db.execute(
-            "INSERT INTO users (name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
-            (name, email, phone, generate_password_hash(password), utc_now_iso()),
+
+        token = generate_registration_verification_token(
+            {
+                "name": name,
+                "email": email,
+                "phone": phone,
+                "instruments_played": instruments,
+                "password_hash": generate_password_hash(password),
+            }
         )
-        db.commit()
-        return redirect(url_for("login"))
-    return render_template("register.html")
+        try:
+            send_registration_verification_email(name, email, token)
+        except Exception:
+            return render_register_template(
+                error="We could not send the verification email right now. Please try again later.",
+                form_data=form_data,
+            )
+        return render_register_template(
+            success="Check your email for a verification link to finish creating your account.",
+        )
+    return render_register_template()
+
+
+@app.route("/verify-registration/<token>")
+def verify_registration(token):
+    try:
+        data = load_registration_verification_token(token)
+    except SignatureExpired:
+        return render_register_template(
+            error="This registration link has expired. Please register again.",
+        )
+    except BadSignature:
+        return render_register_template(
+            error="This registration link is invalid. Please register again.",
+        )
+
+    db = get_db()
+    existing_user = db.execute(
+        "SELECT * FROM users WHERE email = ?",
+        (data["email"],),
+    ).fetchone()
+    if existing_user and existing_user["password_hash"]:
+        return render_register_template(
+            error="This account has already been created. Please log in instead.",
+        )
+
+    if existing_user:
+        db.execute(
+            """
+            UPDATE users
+            SET name = ?, phone = ?, instruments_played = ?, password_hash = ?
+            WHERE id = ?
+            """,
+            (
+                data["name"],
+                data["phone"],
+                data["instruments_played"],
+                data["password_hash"],
+                existing_user["id"],
+            ),
+        )
+    else:
+        db.execute(
+            """
+            INSERT INTO users (name, email, phone, instruments_played, password_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["name"],
+                data["email"],
+                data["phone"],
+                data["instruments_played"],
+                data["password_hash"],
+                utc_now_iso(),
+            ),
+        )
+    db.commit()
+    return redirect(url_for("login", registered="success"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -907,6 +1030,8 @@ def login():
     success_message = None
     if request.args.get("reset") == "success":
         success_message = "Your password has been set. You can now log in."
+    elif request.args.get("registered") == "success":
+        success_message = "Your email has been verified. You can now log in."
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")

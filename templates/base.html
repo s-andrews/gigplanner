@@ -27,11 +27,6 @@
       <a class="btn btn-secondary btn-sm" href="{{ url_for('profile') }}">My Details</a>
       <a class="btn btn-secondary btn-sm" href="{{ url_for('logout') }}">Logout</a>
     </div>
-    {% else %}
-    <div class="ms-auto">
-      <a class="btn btn-secondary btn-sm me-2" href="{{ url_for('login') }}">Login</a>
-      <a class="btn btn-light btn-sm" href="{{ url_for('register') }}">Register</a>
-    </div>
     {% endif %}
   </div>
 </nav>

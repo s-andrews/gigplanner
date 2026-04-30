@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="row justify-content-center">
+<div class="row justify-content-center mt-5">
 <div class="col-md-6">
 <div class="auth-page-title">
   <a href="{{ url_for('index') }}" aria-label="Go to home page">
@@ -13,11 +13,14 @@
   <h2 class="mb-0">Create account</h2>
 </div>
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
 <form method="post" class="card card-body">
-  <div class="mb-3"><label class="form-label">Name</label><input name="name" class="form-control" required></div>
-  <div class="mb-3"><label class="form-label">Email</label><input type="email" name="email" class="form-control" required></div>
-  <div class="mb-3"><label class="form-label">Phone</label><input name="phone" class="form-control"></div>
-  <div class="mb-3"><label class="form-label">Password</label><input type="password" name="password" class="form-control" required></div>
+  <div class="mb-3"><label class="form-label">Name *</label><input name="name" class="form-control" value="{{ form_data.get('name', '') }}" required></div>
+  <div class="mb-3"><label class="form-label">Email *</label><input type="email" name="email" class="form-control" value="{{ form_data.get('email', '') }}" required></div>
+  <div class="mb-3"><label class="form-label">Phone <span class="text-muted">(optional)</span></label><input name="phone" class="form-control" value="{{ form_data.get('phone', '') }}"></div>
+  <div class="mb-3"><label class="form-label">Instruments Played <span class="text-muted">(optional)</span></label><input name="instruments_played" class="form-control" value="{{ form_data.get('instruments_played', '') }}" placeholder="e.g., Trumpet, Flugelhorn"></div>
+  <div class="mb-3"><label class="form-label">Password *</label><input type="password" name="password" class="form-control" required></div>
+  <div class="mb-3"><label class="form-label">Confirm Password *</label><input type="password" name="confirm_password" class="form-control" required></div>
   <button class="btn btn-secondary">Register</button>
 </form>
 </div></div>
