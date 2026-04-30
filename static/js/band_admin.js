@@ -2,6 +2,7 @@ const bandId = window.BAND_ID;
 let activeRehearsalDate = null;
 let activeGigId = null;
 let gigModalInstance = null;
+let gigModalMode = 'edit';
 
 function activateAdminTabFromHash() {
   if (!window.bootstrap || !location.hash) return;
@@ -47,66 +48,35 @@ function setGigModalFields(card) {
   document.getElementById('modal-fee-band').value = data.fee_for_band ?? '';
 }
 
-document.querySelectorAll('.nav-tabs [data-bs-toggle="tab"]').forEach((tabButton) => {
-  tabButton.addEventListener('shown.bs.tab', (event) => {
-    const target = event.target.dataset.bsTarget;
-    if (!target) return;
-    history.replaceState(null, '', `${location.pathname}${location.search}${target}`);
-  });
-});
-
-activateAdminTabFromHash();
-
-async function createGig() {
-  const payload = {
-    title: document.getElementById('gig-title').value,
-    gig_date: document.getElementById('gig-date').value,
-    start_time: document.getElementById('start-time').value,
-    end_time: document.getElementById('end-time').value,
-    location: document.getElementById('location').value,
-    location_url: document.getElementById('location-url').value,
-    notes: document.getElementById('gig-notes').value,
-    status: document.getElementById('status').value,
-    fee_per_player: document.getElementById('fee-player').value,
-    fee_for_band: document.getElementById('fee-band').value,
-  };
-  const res = await fetch(`/api/band/${bandId}/gig`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
-  });
-  if (res.ok) {
-    document.getElementById('gig-title').value = '';
-    document.getElementById('gig-date').value = '';
-    document.getElementById('start-time').value = '';
-    document.getElementById('end-time').value = '';
-    document.getElementById('location').value = '';
-    document.getElementById('location-url').value = '';
-    document.getElementById('gig-notes').value = '';
-    document.getElementById('status').value = 'Unconfirmed';
-    document.getElementById('fee-player').value = '';
-    document.getElementById('fee-band').value = '';
-    location.reload();
-  } else {
-    alert('Could not create gig');
-  }
+function resetGigModalFields() {
+  activeGigId = null;
+  document.getElementById('modal-gig-id').value = '';
+  document.getElementById('modal-gig-title').value = '';
+  document.getElementById('modal-gig-date').value = '';
+  document.getElementById('modal-start-time').value = '';
+  document.getElementById('modal-end-time').value = '';
+  document.getElementById('modal-location').value = '';
+  document.getElementById('modal-location-url').value = '';
+  document.getElementById('modal-gig-notes').value = '';
+  document.getElementById('modal-status').value = 'Unconfirmed';
+  document.getElementById('modal-fee-player').value = '';
+  document.getElementById('modal-fee-band').value = '';
 }
 
-document.getElementById('create-gig-btn')?.addEventListener('click', createGig);
+function setGigModalMode(mode) {
+  gigModalMode = mode;
+  const title = document.getElementById('gig-modal-title');
+  const saveButton = document.getElementById('save-gig-btn');
+  const deleteButton = document.getElementById('delete-gig-btn');
+  const isCreateMode = mode === 'create';
 
-document.querySelectorAll('.edit-gig').forEach((btn) => {
-  btn.addEventListener('click', (event) => {
-    const card = event.target.closest('[data-gig-id]');
-    if (!card) return;
-    setGigModalFields(card);
-    getGigModal()?.show();
-  });
-});
+  title.textContent = isCreateMode ? 'Create New Gig' : 'Edit Gig';
+  saveButton.textContent = isCreateMode ? 'Create Gig' : 'Save Changes';
+  deleteButton.classList.toggle('d-none', isCreateMode);
+}
 
-document.getElementById('save-gig-btn')?.addEventListener('click', async () => {
-  const gigId = document.getElementById('modal-gig-id').value;
-  if (!gigId) return;
-  const payload = {
+function getGigPayloadFromModal() {
+  return {
     title: document.getElementById('modal-gig-title').value,
     gig_date: document.getElementById('modal-gig-date').value,
     start_time: document.getElementById('modal-start-time').value,
@@ -118,6 +88,59 @@ document.getElementById('save-gig-btn')?.addEventListener('click', async () => {
     fee_per_player: document.getElementById('modal-fee-player').value,
     fee_for_band: document.getElementById('modal-fee-band').value,
   };
+}
+
+document.querySelectorAll('.nav-tabs [data-bs-toggle="tab"]').forEach((tabButton) => {
+  tabButton.addEventListener('shown.bs.tab', (event) => {
+    const target = event.target.dataset.bsTarget;
+    if (!target) return;
+    history.replaceState(null, '', `${location.pathname}${location.search}${target}`);
+  });
+});
+
+activateAdminTabFromHash();
+
+async function createGig() {
+  const payload = getGigPayloadFromModal();
+  const res = await fetch(`/api/band/${bandId}/gig`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (res.ok) {
+    resetGigModalFields();
+    getGigModal()?.hide();
+    location.reload();
+  } else {
+    alert('Could not create gig');
+  }
+}
+
+document.getElementById('open-create-gig-btn')?.addEventListener('click', () => {
+  resetGigModalFields();
+  setGigModalMode('create');
+  getGigModal()?.show();
+});
+
+document.querySelectorAll('.edit-gig').forEach((btn) => {
+  btn.addEventListener('click', (event) => {
+    const card = event.target.closest('[data-gig-id]');
+    if (!card) return;
+    setGigModalMode('edit');
+    setGigModalFields(card);
+    getGigModal()?.show();
+  });
+});
+
+document.getElementById('save-gig-btn')?.addEventListener('click', async () => {
+  if (gigModalMode === 'create') {
+    await createGig();
+    return;
+  }
+
+  const gigId = document.getElementById('modal-gig-id').value;
+  if (!gigId) return;
+  const payload = getGigPayloadFromModal();
   const res = await fetch(`/api/gig/${gigId}`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},

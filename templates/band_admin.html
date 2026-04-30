@@ -4,22 +4,6 @@
 <div class="band-timezone-notice">
   All gig dates and times on this page use the band timezone: <strong>{{ band['timezone']|timezone_label }}</strong>.
 </div>
-<div class="card card-body mb-4">
-  <h4>Add New Gig</h4>
-  <div class="row g-2">
-    <div class="col-md-6"><input id="gig-title" class="form-control" placeholder="Gig title"></div>
-    <div class="col-md-6"><input id="location" class="form-control" placeholder="Location"></div>
-    <div class="col-md-6"><input id="location-url" class="form-control" placeholder="Location link (optional)"></div>
-    <div class="col-md-4"><input id="gig-date" type="date" class="form-control"></div>
-    <div class="col-md-4"><input id="start-time" type="time" class="form-control"></div>
-    <div class="col-md-4"><input id="end-time" type="time" class="form-control"></div>
-    <div class="col-md-4"><select id="status" class="form-select"><option>Unconfirmed</option><option>Confirmed</option></select></div>
-    <div class="col-md-4"><input id="fee-player" type="number" step="0.01" class="form-control" placeholder="Fee/player"></div>
-    <div class="col-md-4"><input id="fee-band" type="number" step="0.01" class="form-control" placeholder="Band fee"></div>
-    <div class="col-12"><textarea id="gig-notes" class="form-control" rows="4" placeholder="Notes (optional)"></textarea></div>
-    <div class="col-12"><button id="create-gig-btn" class="btn btn-secondary">Add</button></div>
-  </div>
-</div>
 
 {% if has_rehearsals %}
 <ul class="nav nav-tabs mb-3" role="tablist">
@@ -33,7 +17,10 @@
 <div class="tab-content">
   <div class="tab-pane fade show active" id="admin-gigs-panel" role="tabpanel">
 {% endif %}
-    <h3>Existing Gigs</h3>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <h3 class="mb-0">Existing Gigs</h3>
+      <button class="btn btn-secondary" id="open-create-gig-btn" type="button">Create New Gig</button>
+    </div>
     <div class="admin-gig-list mb-3" id="gigs-list">
       {% for gig in gigs %}
       <section
@@ -53,7 +40,7 @@
           'fee_per_player': gig['fee_per_player'] if gig['fee_per_player'] is not none else '',
           'fee_for_band': gig['fee_for_band'] if gig['fee_for_band'] is not none else ''
         }|tojson }}</script>
-        <div class="d-flex flex-wrap justify-content-between gap-3">
+        <div class="admin-gig-card-layout">
           <div class="admin-gig-card-main">
             <h5 class="mb-1">
               {% if gig['title'] %}
@@ -87,7 +74,7 @@
             </div>
             <div class="admin-gig-actions">
               <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Edit Lineup</a>
-              <button class="btn btn-sm btn-outline-secondary edit-gig">Edit Gig</button>
+              <button class="btn btn-sm btn-secondary edit-gig">Edit Gig</button>
             </div>
           </div>
         </div>
@@ -127,7 +114,7 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Edit Gig</h5>
+        <h5 class="modal-title" id="gig-modal-title">Edit Gig</h5>
         <button class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
