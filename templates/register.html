@@ -2,7 +2,16 @@
 {% block content %}
 <div class="row justify-content-center">
 <div class="col-md-6">
-<h2>Create account</h2>
+<div class="auth-page-title">
+  <a href="{{ url_for('index') }}" aria-label="Go to home page">
+    <img
+      src="{{ url_for('static', filename='images/gig_planner_logo.png') }}"
+      alt="Gig Planner"
+      class="auth-page-logo"
+    >
+  </a>
+  <h2 class="mb-0">Create account</h2>
+</div>
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 <form method="post" class="card card-body">
   <div class="mb-3"><label class="form-label">Name</label><input name="name" class="form-control" required></div>

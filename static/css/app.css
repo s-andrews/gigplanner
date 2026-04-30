@@ -107,6 +107,19 @@ h3 {
   width: auto;
 }
 
+.auth-page-title {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.auth-page-logo {
+  height: 28px;
+  width: auto;
+  display: block;
+}
+
 .welcome-screen {
   display: flex;
   flex-direction: column;
