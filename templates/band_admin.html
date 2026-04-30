@@ -7,14 +7,17 @@
 <div class="card card-body mb-4">
   <h4>Add New Gig</h4>
   <div class="row g-2">
+    <div class="col-md-6"><input id="gig-title" class="form-control" placeholder="Gig title"></div>
+    <div class="col-md-6"><input id="location" class="form-control" placeholder="Location"></div>
+    <div class="col-md-6"><input id="location-url" class="form-control" placeholder="Location link (optional)"></div>
     <div class="col-md-4"><input id="gig-date" type="date" class="form-control"></div>
     <div class="col-md-4"><input id="start-time" type="time" class="form-control"></div>
     <div class="col-md-4"><input id="end-time" type="time" class="form-control"></div>
-    <div class="col-md-5"><input id="location" class="form-control" placeholder="Location"></div>
-    <div class="col-md-2"><select id="status" class="form-select"><option>Unconfirmed</option><option>Confirmed</option></select></div>
-    <div class="col-md-2"><input id="fee-player" type="number" step="0.01" class="form-control" placeholder="Fee/player"></div>
-    <div class="col-md-2"><input id="fee-band" type="number" step="0.01" class="form-control" placeholder="Band fee"></div>
-    <div class="col-md-1"><button id="create-gig-btn" class="btn btn-secondary w-100">Add</button></div>
+    <div class="col-md-4"><select id="status" class="form-select"><option>Unconfirmed</option><option>Confirmed</option></select></div>
+    <div class="col-md-4"><input id="fee-player" type="number" step="0.01" class="form-control" placeholder="Fee/player"></div>
+    <div class="col-md-4"><input id="fee-band" type="number" step="0.01" class="form-control" placeholder="Band fee"></div>
+    <div class="col-12"><textarea id="gig-notes" class="form-control" rows="4" placeholder="Notes (optional)"></textarea></div>
+    <div class="col-12"><button id="create-gig-btn" class="btn btn-secondary">Add</button></div>
   </div>
 </div>
 
@@ -33,42 +36,58 @@
     <h3>Existing Gigs</h3>
     <div class="admin-gig-list mb-3" id="gigs-list">
       {% for gig in gigs %}
-      <section class="card card-body admin-gig-card" data-gig-id="{{ gig['id'] }}">
-        <div class="admin-gig-card-fields">
-          <div class="admin-gig-field">
-            <input class="form-control form-control-sm fld-date" type="date" value="{{ gig['gig_date'] }}">
+      <section
+        class="card card-body admin-gig-card dashboard-gig-card"
+        data-gig-id="{{ gig['id'] }}"
+      >
+        <script type="application/json" class="gig-card-data">{{ {
+          'id': gig['id'],
+          'title': gig['title'] or '',
+          'gig_date': gig['gig_date'],
+          'start_time': gig['start_time'],
+          'end_time': gig['end_time'],
+          'location': gig['location'],
+          'location_url': gig['location_url'] or '',
+          'notes': gig['notes'] or '',
+          'status': gig['status'],
+          'fee_per_player': gig['fee_per_player'] if gig['fee_per_player'] is not none else '',
+          'fee_for_band': gig['fee_for_band'] if gig['fee_for_band'] is not none else ''
+        }|tojson }}</script>
+        <div class="d-flex flex-wrap justify-content-between gap-3">
+          <div class="admin-gig-card-main">
+            <h5 class="mb-1">
+              {% if gig['title'] %}
+                {{ gig['title'] }}
+              {% else %}
+                {{ gig['location'] }}
+              {% endif %}
+            </h5>
+            <div>{{ gig['gig_date']|human_date }} | {{ gig['start_time'] }} - {{ gig['end_time'] }}</div>
+            <div class="text-muted">
+              {{ gig['location'] }}
+              {% if gig['location_url'] %}
+                | <a href="{{ gig['location_url'] }}" target="_blank" rel="noopener noreferrer">Map link</a>
+              {% endif %}
+            </div>
+            <small class="text-muted">
+              Status: {{ gig['status'] }}
+              {% if gig['fee_per_player'] is not none %} | Fee/player: {{ gig['fee_per_player'] }}{% endif %}
+              {% if gig['fee_for_band'] is not none %} | Band fee: {{ gig['fee_for_band'] }}{% endif %}
+            </small>
+            {% if gig['notes'] %}
+            <div class="admin-gig-notes-preview mt-2">{{ gig['notes'] }}</div>
+            {% endif %}
           </div>
-          <div class="admin-gig-field">
-            <input class="form-control form-control-sm fld-start" type="time" value="{{ gig['start_time'] }}">
-          </div>
-          <div class="admin-gig-field">
-            <input class="form-control form-control-sm fld-end" type="time" value="{{ gig['end_time'] }}">
-          </div>
-          <div class="admin-gig-field admin-gig-field-location">
-            <input class="form-control form-control-sm fld-location" value="{{ gig['location'] }}">
-          </div>
-          <div class="admin-gig-field">
-            <select class="form-select form-select-sm fld-status">
-              <option {% if gig['status']=='Unconfirmed' %}selected{% endif %}>Unconfirmed</option>
-              <option {% if gig['status']=='Confirmed' %}selected{% endif %}>Confirmed</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="admin-gig-card-meta">
-          <div class="admin-gig-card-section">
-            <div class="response-summary admin-response-summary">
+          <div class="admin-gig-card-side">
+            <div class="response-summary admin-response-summary mb-2">
               <span class="response-summary-item response-summary-item-available">{{ gig['available_count'] }} Available</span>
               <span class="response-summary-item response-summary-item-not-available">{{ gig['not_available_count'] }} Not Available</span>
               <span class="response-summary-item">{{ gig['unsure_count'] }} Not sure</span>
               <span class="response-summary-item">{{ gig['unanswered_count'] }} Unanswered</span>
             </div>
-          </div>
-
-          <div class="admin-gig-card-section">
             <div class="admin-gig-actions">
               <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Edit Lineup</a>
-              <button class="btn btn-sm btn-danger delete-gig">Delete</button>
+              <button class="btn btn-sm btn-outline-secondary edit-gig">Edit Gig</button>
             </div>
           </div>
         </div>
@@ -103,6 +122,39 @@
   </div>
 </div>
 {% endif %}
+
+<div class="modal fade" id="gigModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Gig</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input id="modal-gig-id" type="hidden">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Gig title</label><input id="modal-gig-title" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Location</label><input id="modal-location" class="form-control"></div>
+          <div class="col-12"><label class="form-label">Location link</label><input id="modal-location-url" class="form-control" placeholder="https://..."></div>
+          <div class="col-md-4"><label class="form-label">Date</label><input id="modal-gig-date" type="date" class="form-control"></div>
+          <div class="col-md-4"><label class="form-label">Start time</label><input id="modal-start-time" type="time" class="form-control"></div>
+          <div class="col-md-4"><label class="form-label">End time</label><input id="modal-end-time" type="time" class="form-control"></div>
+          <div class="col-md-4"><label class="form-label">Status</label><select id="modal-status" class="form-select"><option>Unconfirmed</option><option>Confirmed</option></select></div>
+          <div class="col-md-4"><label class="form-label">Fee/player</label><input id="modal-fee-player" type="number" step="0.01" class="form-control"></div>
+          <div class="col-md-4"><label class="form-label">Band fee</label><input id="modal-fee-band" type="number" step="0.01" class="form-control"></div>
+          <div class="col-12"><label class="form-label">Notes</label><textarea id="modal-gig-notes" class="form-control" rows="6"></textarea></div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <button class="btn btn-danger" id="delete-gig-btn">Delete Gig</button>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-secondary" id="save-gig-btn">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="modal fade" id="rehearsalModal" tabindex="-1">
   <div class="modal-dialog">

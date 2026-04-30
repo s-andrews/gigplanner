@@ -544,6 +544,8 @@ def init_db():
             start_time TEXT NOT NULL,
             end_time TEXT NOT NULL,
             location TEXT NOT NULL,
+            location_url TEXT,
+            notes TEXT,
             fee_per_player REAL,
             fee_for_band REAL,
             status TEXT NOT NULL CHECK(status IN ('Confirmed','Unconfirmed')),
@@ -640,6 +642,13 @@ def init_db():
     membership_columns = {row[1] for row in cur.execute("PRAGMA table_info(band_memberships)").fetchall()}
     if "is_regular" not in membership_columns:
         cur.execute("ALTER TABLE band_memberships ADD COLUMN is_regular INTEGER NOT NULL DEFAULT 1")
+    gig_columns = {row[1] for row in cur.execute("PRAGMA table_info(gigs)").fetchall()}
+    if "title" not in gig_columns:
+        cur.execute("ALTER TABLE gigs ADD COLUMN title TEXT")
+    if "location_url" not in gig_columns:
+        cur.execute("ALTER TABLE gigs ADD COLUMN location_url TEXT")
+    if "notes" not in gig_columns:
+        cur.execute("ALTER TABLE gigs ADD COLUMN notes TEXT")
     users_sql_row = cur.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
     ).fetchone()
@@ -1354,12 +1363,15 @@ def user_calendar_feed(token):
         start_dt = datetime.strptime(f"{gig['gig_date']} {gig['start_time']}", "%Y-%m-%d %H:%M")
         end_dt = datetime.strptime(f"{gig['gig_date']} {gig['end_time']}", "%Y-%m-%d %H:%M")
         band_timezone = normalize_band_timezone(gig["band_timezone"]) or DEFAULT_BAND_TIMEZONE
-        summary = f"{gig['band_name']} - {gig['location']}"
+        summary_target = gig["title"] or gig["location"]
+        summary = f"{gig['band_name']} - {summary_target}"
         description_parts = []
         if gig["parts"]:
             description_parts.append(f"Your parts: {gig['parts']}")
         if gig["status"]:
             description_parts.append(f"Status: {gig['status']}")
+        if gig["notes"]:
+            description_parts.append(f"Notes: {gig['notes']}")
         description_parts.append(f"Band timezone: {band_timezone}")
         description = "\\n".join(description_parts)
 
@@ -2198,8 +2210,8 @@ def create_gig(band_id):
     db = get_db()
     cur = db.execute(
         """
-        INSERT INTO gigs (band_id, title, gig_date, start_time, end_time, location, fee_per_player, fee_for_band, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO gigs (band_id, title, gig_date, start_time, end_time, location, location_url, notes, fee_per_player, fee_for_band, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             band_id,
@@ -2207,7 +2219,9 @@ def create_gig(band_id):
             data["gig_date"],
             data["start_time"],
             data["end_time"],
-            data["location"],
+            data["location"].strip(),
+            data.get("location_url", "").strip() or None,
+            data.get("notes", "").strip() or None,
             data.get("fee_per_player") or None,
             data.get("fee_for_band") or None,
             data["status"],
@@ -2269,20 +2283,26 @@ def update_gig(gig_id):
     db.execute(
         """
         UPDATE gigs SET
+            title = ?,
             gig_date = ?,
             start_time = ?,
             end_time = ?,
             location = ?,
+            location_url = ?,
+            notes = ?,
             fee_per_player = ?,
             fee_for_band = ?,
             status = ?
         WHERE id = ?
         """,
         (
+            data.get("title", gig["title"] or "").strip(),
             data.get("gig_date", gig["gig_date"]),
             data.get("start_time", gig["start_time"]),
             data.get("end_time", gig["end_time"]),
-            data.get("location", gig["location"]),
+            data.get("location", gig["location"]).strip(),
+            data.get("location_url", gig["location_url"] or "").strip() or None,
+            data.get("notes", gig["notes"] or "").strip() or None,
             data.get("fee_per_player", gig["fee_per_player"]),
             data.get("fee_for_band", gig["fee_for_band"]),
             data.get("status", gig["status"]),

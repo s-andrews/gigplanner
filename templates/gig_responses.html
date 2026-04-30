@@ -3,7 +3,13 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
   <div>
     <h2 class="mb-1">Gig Editor</h2>
-    <div class="text-muted">{{ gig['band_name'] }} | {{ gig['gig_date']|human_date }} | {{ gig['start_time'] }} - {{ gig['end_time'] }} | {{ gig['location'] }}</div>
+    <div class="text-muted">
+      {{ gig['band_name'] }}
+      {% if gig['title'] %} | {{ gig['title'] }}{% endif %}
+      | {{ gig['gig_date']|human_date }}
+      | {{ gig['start_time'] }} - {{ gig['end_time'] }}
+      | {{ gig['location'] }}
+    </div>
     <div class="text-muted small">Timezone: {{ gig['band_timezone']|timezone_label }}</div>
   </div>
   <div class="d-flex gap-2">

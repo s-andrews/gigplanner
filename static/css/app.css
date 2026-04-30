@@ -322,6 +322,15 @@ h3 {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
+.dashboard-gig-notes,
+.admin-gig-notes-preview {
+  white-space: pre-wrap;
+  padding: 0.8rem 0.95rem;
+  border-radius: 0.75rem;
+  background-color: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
 .dashboard-gig-card-available {
   background-color: rgba(74, 124, 89, 0.55);
   border-color: rgba(134, 190, 151, 0.65);
@@ -344,6 +353,36 @@ h3 {
 
 .admin-rehearsal-card {
   background-color: rgba(15, 23, 42, 0.9);
+}
+
+.admin-gig-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-gig-card {
+  background-color: rgba(15, 23, 42, 0.88);
+}
+
+.admin-gig-card-main {
+  min-width: 0;
+  flex: 1 1 28rem;
+}
+
+.admin-gig-card-side {
+  min-width: 18rem;
+  flex: 0 1 22rem;
+}
+
+.admin-gig-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.admin-gig-notes-preview {
+  max-height: 7.5rem;
+  overflow: auto;
 }
 
 .gig-editor-panel {

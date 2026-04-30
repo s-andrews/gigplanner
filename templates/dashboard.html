@@ -27,9 +27,34 @@
           <div class="list-group-item dashboard-gig-card dashboard-gig-card-{{ gig['availability_status']|lower|replace(' ', '-') }}">
             <div class="d-flex flex-wrap justify-content-between gap-2">
               <div>
-                <h5 class="mb-1">{{ gig['band_name'] }} - {{ gig['location'] }}</h5>
+                <h5 class="mb-1">
+                  {{ gig['band_name'] }}{% if gig['title'] %} - {{ gig['title'] }}{% else %} - {{ gig['location'] }}{% endif %}
+                </h5>
                 <div>{{ gig['gig_date']|human_date }} | {{ gig['start_time'] }} - {{ gig['end_time'] }}</div>
+                <div class="text-muted">
+                  {{ gig['location'] }}
+                  {% if gig['location_url'] %}
+                    | <a href="{{ gig['location_url'] }}" target="_blank" rel="noopener noreferrer">Map link</a>
+                  {% endif %}
+                </div>
                 <small class="text-muted">Your parts: {{ gig['parts'] or '-' }} | Timezone: {{ gig['band_timezone']|timezone_label }}</small>
+                {% if gig['notes'] %}
+                <div class="mt-2">
+                  <button
+                    class="btn btn-outline-secondary btn-sm gig-notes-toggle"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#gig-notes-{{ gig['id'] }}"
+                    aria-expanded="false"
+                    aria-controls="gig-notes-{{ gig['id'] }}"
+                  >
+                    Show Notes
+                  </button>
+                </div>
+                <div class="collapse mt-2" id="gig-notes-{{ gig['id'] }}">
+                  <div class="dashboard-gig-notes">{{ gig['notes'] }}</div>
+                </div>
+                {% endif %}
               </div>
               <div class="availability-control" data-gig-id="{{ gig['id'] }}">
                 <label class="form-label mb-0">Availability</label>
