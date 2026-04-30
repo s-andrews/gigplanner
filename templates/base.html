@@ -21,9 +21,6 @@
     {% if current_user %}
     <div class="d-flex flex-wrap align-items-center gap-2">
       <a class="btn btn-secondary btn-sm" href="{{ url_for('dashboard') }}">Dashboard</a>
-      {% if current_band %}
-      <span class="text-light small px-1">{{ current_band['name'] }}</span>
-      {% endif %}
     </div>
     <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
       <span class="text-light">{{ current_user['name'] }}</span>

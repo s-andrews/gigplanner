@@ -21,7 +21,7 @@
     <div class="tab-content">
       <div class="tab-pane fade {% if active_tab == 'gigs' %}show active{% endif %}" id="gigs-panel" role="tabpanel">
         {% if gigs %}
-        <h2>Your Gigs</h2>
+        <h2>My Gigs</h2>
         <div class="list-group mb-4 mb-lg-0">
           {% for gig in gigs %}
           <div class="list-group-item dashboard-gig-card dashboard-gig-card-{{ gig['availability_status']|lower|replace(' ', '-') }}">

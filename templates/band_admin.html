@@ -62,7 +62,21 @@
               {% if gig['fee_for_band'] is not none %} | Band fee: {{ gig['fee_for_band'] }}{% endif %}
             </small>
             {% if gig['notes'] %}
-            <div class="admin-gig-notes-preview mt-2">{{ gig['notes'] }}</div>
+            <div class="mt-2">
+              <button
+                class="btn btn-secondary btn-sm gig-notes-toggle"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#admin-gig-notes-{{ gig['id'] }}"
+                aria-expanded="false"
+                aria-controls="admin-gig-notes-{{ gig['id'] }}"
+              >
+                Show Notes
+              </button>
+            </div>
+            <div class="collapse mt-2" id="admin-gig-notes-{{ gig['id'] }}">
+              <div class="admin-gig-notes-preview">{{ gig['notes'] }}</div>
+            </div>
             {% endif %}
           </div>
           <div class="admin-gig-card-side">
