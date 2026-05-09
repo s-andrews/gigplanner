@@ -20,6 +20,8 @@ def load_config():
         "SMTP_PASSWORD": os.environ.get("SMTP_PASSWORD", ""),
         "SMTP_USE_TLS": os.environ.get("SMTP_USE_TLS", "").lower() in {"1", "true", "yes"},
         "MAIL_FROM": os.environ.get("MAIL_FROM", "noreply@gigplanner.uk"),
+        "MAIL_ENVELOPE_FROM": os.environ.get("MAIL_ENVELOPE_FROM", ""),
+        "MAIL_FROM_DOMAIN": os.environ.get("MAIL_FROM_DOMAIN", ""),
     }
 
 
@@ -54,10 +56,26 @@ def build_message(sender, recipient):
     return message
 
 
+def get_mail_envelope_from(config):
+    explicit_envelope = config["MAIL_ENVELOPE_FROM"].strip()
+    if explicit_envelope:
+        return explicit_envelope
+
+    from_domain = config["MAIL_FROM_DOMAIN"].strip()
+    header_from = config["MAIL_FROM"].strip()
+    if from_domain and "@" in header_from:
+        local_part = header_from.split("@", 1)[0]
+        return f"{local_part}@{from_domain}"
+
+    return header_from
+
+
 def print_config(config, recipient):
+    envelope_from = get_mail_envelope_from(config)
     print("== SMTP Test Configuration ==")
     print(f"Recipient: {recipient}")
-    print(f"From: {config['MAIL_FROM']}")
+    print(f"Header From: {config['MAIL_FROM']}")
+    print(f"Envelope From: {envelope_from}")
     print(f"Server: {config['SMTP_SERVER']}")
     print(f"Port: {config['SMTP_PORT']}")
     print(f"Use STARTTLS: {config['SMTP_USE_TLS']}")
@@ -92,6 +110,7 @@ def resolve_server(hostname):
 
 def send_test_email(config, recipient):
     message = build_message(config["MAIL_FROM"], recipient)
+    envelope_from = get_mail_envelope_from(config)
 
     print("== SMTP Session ==")
     print("Opening SMTP connection...")
@@ -121,7 +140,7 @@ def send_test_email(config, recipient):
             print("Skipping SMTP login because SMTP_USERNAME is empty.")
 
         print("Sending message...")
-        send_result = smtp.send_message(message)
+        send_result = smtp.send_message(message, from_addr=envelope_from, to_addrs=[recipient])
         print(f"send_message result: {send_result!r}")
         print("SMTP send completed.")
 

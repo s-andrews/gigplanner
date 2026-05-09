@@ -22,6 +22,8 @@ app.config["SMTP_USERNAME"] = os.environ.get("SMTP_USERNAME", "")
 app.config["SMTP_PASSWORD"] = os.environ.get("SMTP_PASSWORD", "")
 app.config["SMTP_USE_TLS"] = os.environ.get("SMTP_USE_TLS", "").lower() in {"1", "true", "yes"}
 app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", "noreply@gigplanner.uk")
+app.config["MAIL_ENVELOPE_FROM"] = os.environ.get("MAIL_ENVELOPE_FROM", "")
+app.config["MAIL_FROM_DOMAIN"] = os.environ.get("MAIL_FROM_DOMAIN", "")
 app.config["BASE_URL"] = os.environ.get("BASE_URL", "https://gigplanner.uk")
 app.config["EMAIL_CHALLENGE_MAX_AGE"] = int(os.environ.get("EMAIL_CHALLENGE_MAX_AGE", "1200"))
 
@@ -884,13 +886,28 @@ def send_email(subject, recipients, body):
     message["From"] = app.config["MAIL_FROM"]
     message["To"] = ", ".join(recipients)
     message.set_content(body)
+    envelope_from = get_mail_envelope_from()
 
     with smtplib.SMTP(app.config["SMTP_SERVER"], app.config["SMTP_PORT"]) as smtp:
         if app.config["SMTP_USE_TLS"]:
             smtp.starttls()
         if app.config["SMTP_USERNAME"]:
             smtp.login(app.config["SMTP_USERNAME"], app.config["SMTP_PASSWORD"])
-        smtp.send_message(message)
+        smtp.send_message(message, from_addr=envelope_from, to_addrs=recipients)
+
+
+def get_mail_envelope_from():
+    explicit_envelope = app.config["MAIL_ENVELOPE_FROM"].strip()
+    if explicit_envelope:
+        return explicit_envelope
+
+    from_domain = app.config["MAIL_FROM_DOMAIN"].strip()
+    header_from = app.config["MAIL_FROM"].strip()
+    if from_domain and "@" in header_from:
+        local_part = header_from.split("@", 1)[0]
+        return f"{local_part}@{from_domain}"
+
+    return header_from
 
 
 def challenge_expiry_minutes():
