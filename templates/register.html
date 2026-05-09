@@ -15,13 +15,28 @@
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 {% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
 <form method="post" class="card card-body">
+  <input type="hidden" name="action" value="{{ 'verify_code' if code_sent else 'send_code' }}">
   <div class="mb-3"><label class="form-label">Name *</label><input name="name" class="form-control" value="{{ form_data.get('name', '') }}" required></div>
   <div class="mb-3"><label class="form-label">Email *</label><input type="email" name="email" class="form-control" value="{{ form_data.get('email', '') }}" required></div>
   <div class="mb-3"><label class="form-label">Phone <span class="text-muted">(optional)</span></label><input name="phone" class="form-control" value="{{ form_data.get('phone', '') }}"></div>
   <div class="mb-3"><label class="form-label">Instruments Played <span class="text-muted">(optional)</span></label><input name="instruments_played" class="form-control" value="{{ form_data.get('instruments_played', '') }}" placeholder="e.g., Trumpet, Flugelhorn"></div>
   <div class="mb-3"><label class="form-label">Password *</label><input type="password" name="password" class="form-control" required></div>
   <div class="mb-3"><label class="form-label">Confirm Password *</label><input type="password" name="confirm_password" class="form-control" required></div>
-  <button class="btn btn-secondary">Register</button>
+  {% if code_sent %}
+  <div class="mb-3">
+    <label class="form-label">Verification code *</label>
+    <input
+      name="challenge_code"
+      class="form-control text-uppercase"
+      maxlength="6"
+      pattern="[A-Z0-9]{6}"
+      placeholder="ABC123"
+      required
+    >
+    <div class="form-text">Enter the 6-character code we emailed you. It expires after {{ challenge_expires_minutes }} minutes.</div>
+  </div>
+  {% endif %}
+  <button class="btn btn-secondary">{{ 'Verify code and create account' if code_sent else 'Email verification code' }}</button>
 </form>
 </div></div>
 {% endblock %}

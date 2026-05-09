@@ -1,3 +1,4 @@
+import json
 import os
 import secrets
 import sqlite3
@@ -8,7 +9,6 @@ from functools import wraps
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -23,14 +23,17 @@ app.config["SMTP_PASSWORD"] = os.environ.get("SMTP_PASSWORD", "")
 app.config["SMTP_USE_TLS"] = os.environ.get("SMTP_USE_TLS", "").lower() in {"1", "true", "yes"}
 app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", "noreply@gigplanner.uk")
 app.config["BASE_URL"] = os.environ.get("BASE_URL", "https://gigplanner.uk")
-app.config["PASSWORD_RESET_MAX_AGE"] = int(os.environ.get("PASSWORD_RESET_MAX_AGE", "86400"))
-app.config["REGISTRATION_VERIFICATION_MAX_AGE"] = int(
-    os.environ.get("REGISTRATION_VERIFICATION_MAX_AGE", "86400")
-)
+app.config["EMAIL_CHALLENGE_MAX_AGE"] = int(os.environ.get("EMAIL_CHALLENGE_MAX_AGE", "1200"))
 
 
 def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+def parse_iso_datetime(value):
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
 
 
 DEFAULT_BAND_TIMEZONE = "Europe/London"
@@ -491,6 +494,16 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS email_challenges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            purpose TEXT NOT NULL,
+            email TEXT NOT NULL,
+            code TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS bands (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -610,6 +623,9 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_challenges_lookup ON email_challenges (purpose, email, created_at)"
     )
     user_columns = {row[1] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
     if "instruments_played" not in user_columns:
@@ -801,34 +817,65 @@ def inject_user():
     }
 
 
-def get_reset_serializer():
-    return URLSafeTimedSerializer(app.config["SECRET_KEY"])
+def generate_email_challenge_code():
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
-def generate_password_reset_token(user):
-    return get_reset_serializer().dumps({"user_id": user["id"], "email": user["email"]}, salt="password-reset")
+def delete_expired_email_challenges(db):
+    db.execute("DELETE FROM email_challenges WHERE expires_at <= ?", (utc_now_iso(),))
 
 
-def load_password_reset_token(token):
-    data = get_reset_serializer().loads(
-        token,
-        salt="password-reset",
-        max_age=app.config["PASSWORD_RESET_MAX_AGE"],
+def create_email_challenge(db, purpose, email, payload):
+    delete_expired_email_challenges(db)
+    code = generate_email_challenge_code()
+    created_at = utc_now_iso()
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=app.config["EMAIL_CHALLENGE_MAX_AGE"])).isoformat()
+    db.execute("DELETE FROM email_challenges WHERE purpose = ? AND email = ?", (purpose, email))
+    db.execute(
+        """
+        INSERT INTO email_challenges (purpose, email, code, payload, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (purpose, email, code, json.dumps(payload), expires_at, created_at),
     )
-    return data
+    db.commit()
+    return code
 
 
-def generate_registration_verification_token(payload):
-    return get_reset_serializer().dumps(payload, salt="registration-verification")
+def get_active_email_challenge(db, purpose, email):
+    delete_expired_email_challenges(db)
+    row = db.execute(
+        """
+        SELECT * FROM email_challenges
+        WHERE purpose = ? AND email = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (purpose, email),
+    ).fetchone()
+    if not row:
+        db.commit()
+        return None
+    expires_at = parse_iso_datetime(row["expires_at"])
+    if expires_at is None or expires_at <= datetime.now(timezone.utc):
+        db.execute("DELETE FROM email_challenges WHERE id = ?", (row["id"],))
+        db.commit()
+        return None
+    return row
 
 
-def load_registration_verification_token(token):
-    data = get_reset_serializer().loads(
-        token,
-        salt="registration-verification",
-        max_age=app.config["REGISTRATION_VERIFICATION_MAX_AGE"],
-    )
-    return data
+def consume_email_challenge(db, purpose, email, submitted_code):
+    challenge = get_active_email_challenge(db, purpose, email)
+    if not challenge:
+        return None, "expired"
+    expected_code = (challenge["code"] or "").strip().upper()
+    received_code = (submitted_code or "").strip().upper()
+    if not secrets.compare_digest(expected_code, received_code):
+        return None, "invalid"
+    db.execute("DELETE FROM email_challenges WHERE id = ?", (challenge["id"],))
+    db.commit()
+    return json.loads(challenge["payload"]), None
 
 
 def send_email(subject, recipients, body):
@@ -846,37 +893,54 @@ def send_email(subject, recipients, body):
         smtp.send_message(message)
 
 
-def send_password_reset_email(user):
-    token = generate_password_reset_token(user)
-    reset_link = public_url(url_for("reset_password", token=token))
+def challenge_expiry_minutes():
+    return max(1, app.config["EMAIL_CHALLENGE_MAX_AGE"] // 60)
+
+
+def send_password_reset_email(user, code):
     body = (
         f"Hi {user['name']},\n\n"
         "A password reset was requested for your Gig Planner account.\n\n"
-        f"Use this link to set your password:\n{reset_link}\n\n"
+        f"Use this code to continue: {code}\n\n"
+        f"This code expires in {challenge_expiry_minutes()} minutes.\n\n"
         "If you did not request this, you can ignore this email.\n\n"
         "If you have any problems, please email contact@gigplanner.uk.\n"
     )
     send_email("Gig Planner password reset", [user["email"]], body)
 
 
-def send_registration_verification_email(name, email, token):
-    verification_link = public_url(url_for("verify_registration", token=token))
+def send_registration_verification_email(name, email, code):
     body = (
         f"Hi {name},\n\n"
         "Please confirm your email address to finish creating your Gig Planner account.\n\n"
-        f"Use this link to verify your email:\n{verification_link}\n\n"
+        f"Use this code to continue: {code}\n\n"
+        f"This code expires in {challenge_expiry_minutes()} minutes.\n\n"
         "If you did not request this, you can ignore this email.\n\n"
         "If you have any problems, please email contact@gigplanner.uk.\n"
     )
     send_email("Gig Planner email verification", [email], body)
 
 
-def render_register_template(error=None, success=None, form_data=None):
+def render_register_template(error=None, success=None, form_data=None, code_sent=False):
     return render_template(
         "register.html",
         error=error,
         success=success,
         form_data=form_data or {},
+        code_sent=code_sent,
+        challenge_expires_minutes=challenge_expiry_minutes(),
+        show_navbar=False,
+    )
+
+
+def render_forgot_password_template(error=None, success=None, email="", code_sent=False):
+    return render_template(
+        "forgot_password.html",
+        error=error,
+        success=success,
+        email=email,
+        code_sent=code_sent,
+        challenge_expires_minutes=challenge_expiry_minutes(),
         show_navbar=False,
     )
 
@@ -912,18 +976,111 @@ def index():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
+        action = request.form.get("action", "send_code")
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
         phone = request.form.get("phone", "").strip()
         instruments = request.form.get("instruments_played", "").strip()
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
+        challenge_code = request.form.get("challenge_code", "").strip().upper()
         form_data = {
             "name": name,
             "email": email,
             "phone": phone,
             "instruments_played": instruments,
         }
+        db = get_db()
+        exists = db.execute("SELECT id, password_hash FROM users WHERE email = ?", (email,)).fetchone()
+        if exists and exists["password_hash"]:
+            return render_register_template(
+                error="An account with that email already exists.",
+                form_data=form_data,
+            )
+
+        if action == "verify_code":
+            if not all([name, email, password, confirm_password, challenge_code]):
+                return render_register_template(
+                    error="Name, email, both password fields, and the verification code are required.",
+                    form_data=form_data,
+                    code_sent=True,
+                )
+            if password != confirm_password:
+                return render_register_template(
+                    error="The passwords do not match.",
+                    form_data=form_data,
+                    code_sent=True,
+                )
+            password_error = validate_password_complexity(password)
+            if password_error:
+                return render_register_template(
+                    error=password_error,
+                    form_data=form_data,
+                    code_sent=True,
+                )
+            payload, error_type = consume_email_challenge(db, "registration", email, challenge_code)
+            if error_type == "expired":
+                return render_register_template(
+                    error="That verification code has expired. Please request a new one.",
+                    form_data=form_data,
+                )
+            if error_type == "invalid":
+                return render_register_template(
+                    error="That verification code is not valid.",
+                    form_data=form_data,
+                    code_sent=True,
+                )
+            if (
+                not payload
+                or payload.get("name") != name
+                or payload.get("email") != email
+                or (payload.get("phone") or "") != phone
+                or (payload.get("instruments_played") or "") != instruments
+            ):
+                return render_register_template(
+                    error="Those registration details do not match the code you requested. Please request a new code.",
+                    form_data=form_data,
+                )
+            existing_user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            if existing_user and existing_user["password_hash"]:
+                return render_register_template(
+                    error="This account has already been created. Please log in instead.",
+                    form_data=form_data,
+                )
+            password_hash = generate_password_hash(password)
+            if existing_user:
+                db.execute(
+                    """
+                    UPDATE users
+                    SET name = ?, phone = ?, instruments_played = ?, password_hash = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        payload["name"],
+                        payload["phone"],
+                        payload["instruments_played"],
+                        password_hash,
+                        existing_user["id"],
+                    ),
+                )
+            else:
+                db.execute(
+                    """
+                    INSERT INTO users (name, email, phone, instruments_played, password_hash, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        payload["name"],
+                        payload["email"],
+                        payload["phone"],
+                        payload["instruments_played"],
+                        password_hash,
+                        utc_now_iso(),
+                    ),
+                )
+            db.commit()
+            return redirect(url_for("login", registered="success"))
+
         if not all([name, email, password, confirm_password]):
             return render_register_template(
                 error="Name, email, and both password fields are required.",
@@ -937,92 +1094,38 @@ def register():
         password_error = validate_password_complexity(password)
         if password_error:
             return render_register_template(error=password_error, form_data=form_data)
-        db = get_db()
-        exists = db.execute("SELECT id, password_hash FROM users WHERE email = ?", (email,)).fetchone()
-        if exists:
-            if exists["password_hash"]:
-                return render_register_template(
-                    error="An account with that email already exists.",
-                    form_data=form_data,
-                )
 
-        token = generate_registration_verification_token(
-            {
-                "name": name,
-                "email": email,
-                "phone": phone,
-                "instruments_played": instruments,
-                "password_hash": generate_password_hash(password),
-            }
-        )
         try:
-            send_registration_verification_email(name, email, token)
+            code = create_email_challenge(
+                db,
+                "registration",
+                email,
+                {
+                    "name": name,
+                    "email": email,
+                    "phone": phone,
+                    "instruments_played": instruments,
+                },
+            )
+            send_registration_verification_email(name, email, code)
         except Exception:
             return render_register_template(
                 error="We could not send the verification email right now. Please try again later.",
                 form_data=form_data,
             )
         return render_register_template(
-            success="Check your email for a verification link to finish creating your account.",
+            success="We’ve emailed you a 6-character verification code. Enter it below to finish creating your account.",
+            form_data=form_data,
+            code_sent=True,
         )
     return render_register_template()
 
 
 @app.route("/verify-registration/<token>")
 def verify_registration(token):
-    try:
-        data = load_registration_verification_token(token)
-    except SignatureExpired:
-        return render_register_template(
-            error="This registration link has expired. Please register again.",
-        )
-    except BadSignature:
-        return render_register_template(
-            error="This registration link is invalid. Please register again.",
-        )
-
-    db = get_db()
-    existing_user = db.execute(
-        "SELECT * FROM users WHERE email = ?",
-        (data["email"],),
-    ).fetchone()
-    if existing_user and existing_user["password_hash"]:
-        return render_register_template(
-            error="This account has already been created. Please log in instead.",
-        )
-
-    if existing_user:
-        db.execute(
-            """
-            UPDATE users
-            SET name = ?, phone = ?, instruments_played = ?, password_hash = ?
-            WHERE id = ?
-            """,
-            (
-                data["name"],
-                data["phone"],
-                data["instruments_played"],
-                data["password_hash"],
-                existing_user["id"],
-            ),
-        )
-    else:
-        db.execute(
-            """
-            INSERT INTO users (name, email, phone, instruments_played, password_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                data["name"],
-                data["email"],
-                data["phone"],
-                data["instruments_played"],
-                data["password_hash"],
-                utc_now_iso(),
-            ),
-        )
-    db.commit()
-    return redirect(url_for("login", registered="success"))
+    return render_register_template(
+        error="Registration links are no longer used. Please register again to receive a fresh verification code.",
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1031,7 +1134,7 @@ def login():
     if request.args.get("reset") == "success":
         success_message = "Your password has been set. You can now log in."
     elif request.args.get("registered") == "success":
-        success_message = "Your email has been verified. You can now log in."
+        success_message = "Your email has been verified and your account is ready. You can now log in."
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
@@ -1056,94 +1159,88 @@ def login():
 @app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
+        action = request.form.get("action", "send_code")
         email = request.form.get("email", "").strip().lower()
+        challenge_code = request.form.get("challenge_code", "").strip().upper()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
         db = get_db()
         user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        if action == "verify_code":
+            if not all([email, challenge_code, password, confirm_password]):
+                return render_forgot_password_template(
+                    error="Email, the challenge code, and both password fields are required.",
+                    email=email,
+                    code_sent=True,
+                )
+            if password != confirm_password:
+                return render_forgot_password_template(
+                    error="The passwords do not match.",
+                    email=email,
+                    code_sent=True,
+                )
+            password_error = validate_password_complexity(password)
+            if password_error:
+                return render_forgot_password_template(
+                    error=password_error,
+                    email=email,
+                    code_sent=True,
+                )
+            payload, error_type = consume_email_challenge(db, "password-reset", email, challenge_code)
+            if error_type == "expired":
+                return render_forgot_password_template(
+                    error="That challenge code has expired. Request a new one to continue.",
+                    email=email,
+                )
+            if error_type == "invalid":
+                return render_forgot_password_template(
+                    error="That challenge code is not valid.",
+                    email=email,
+                    code_sent=True,
+                )
+            user = db.execute(
+                "SELECT * FROM users WHERE id = ? AND email = ?",
+                (payload.get("user_id"), email),
+            ).fetchone()
+            if not user:
+                return render_forgot_password_template(
+                    error="That password reset request is no longer valid. Request a new code to continue.",
+                    email=email,
+                )
+            db.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (generate_password_hash(password), user["id"]),
+            )
+            db.commit()
+            return redirect(url_for("login", reset="success"))
+
         try:
             if user:
-                send_password_reset_email(user)
+                code = create_email_challenge(
+                    db,
+                    "password-reset",
+                    email,
+                    {"user_id": user["id"]},
+                )
+                send_password_reset_email(user, code)
         except Exception:
-            return render_template(
-                "forgot_password.html",
+            return render_forgot_password_template(
                 error="We could not send the reset email right now. Please try again later.",
                 email=email,
-                show_navbar=False,
             )
-        return render_template(
-            "forgot_password.html",
-            success=(
-                "If we found an account for that email, we have sent a reset link so you can set your password."
-            ),
-            show_navbar=False,
+        return render_forgot_password_template(
+            success="If we found an account for that email, we’ve sent a 6-character challenge code.",
+            email=email,
+            code_sent=True,
         )
-    return render_template("forgot_password.html", show_navbar=False)
+    return render_forgot_password_template()
 
 
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
 def reset_password(token):
-    try:
-        data = load_password_reset_token(token)
-    except SignatureExpired:
-        return render_template(
-            "reset_password.html",
-            error="This password reset link has expired. Please request a new one.",
-            invalid_token=True,
-            show_navbar=False,
-        )
-    except BadSignature:
-        return render_template(
-            "reset_password.html",
-            error="This password reset link is invalid. Please request a new one.",
-            invalid_token=True,
-            show_navbar=False,
-        )
-
-    db = get_db()
-    user = db.execute(
-        "SELECT * FROM users WHERE id = ? AND email = ?",
-        (data["user_id"], data["email"]),
-    ).fetchone()
-    if not user:
-        return render_template(
-            "reset_password.html",
-            error="This password reset link is no longer valid. Please request a new one.",
-            invalid_token=True,
-            show_navbar=False,
-        )
-
-    if request.method == "POST":
-        password = request.form.get("password", "")
-        confirm_password = request.form.get("confirm_password", "")
-        if not password:
-            return render_template(
-                "reset_password.html",
-                error="Please enter a password.",
-                token=token,
-                show_navbar=False,
-            )
-        if password != confirm_password:
-            return render_template(
-                "reset_password.html",
-                error="The passwords do not match.",
-                token=token,
-                show_navbar=False,
-            )
-        password_error = validate_password_complexity(password)
-        if password_error:
-            return render_template(
-                "reset_password.html",
-                error=password_error,
-                token=token,
-                show_navbar=False,
-            )
-        db.execute(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
-            (generate_password_hash(password), user["id"]),
-        )
-        db.commit()
-        return redirect(url_for("login", reset="success"))
-
-    return render_template("reset_password.html", token=token, show_navbar=False)
+    return render_forgot_password_template(
+        error="Password reset links are no longer used. Request a new challenge code to continue.",
+    )
 
 
 @app.route("/logout")
