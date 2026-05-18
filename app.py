@@ -6,6 +6,7 @@ import smtplib
 from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from functools import wraps
+from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
@@ -426,6 +427,14 @@ def filter_visible_gigs(gigs):
         if gig_date >= band_local_today(gig["band_timezone"]):
             visible_gigs.append(gig)
     return visible_gigs
+
+
+def build_mailto_link(subject, emails):
+    unique_emails = sorted({(email or "").strip() for email in emails if (email or "").strip()})
+    if not unique_emails:
+        return ""
+    query = f"subject={quote(subject)}&bcc={quote(','.join(unique_emails))}"
+    return f"mailto:?{query}"
 
 
 def parse_weekday(value):
@@ -2284,12 +2293,49 @@ def band_admin(band_id):
         """,
         (band_id,),
     ).fetchall()
+    gig_assignee_rows = db.execute(
+        """
+        SELECT gp.gig_id, u.email
+        FROM gig_parts gp
+        JOIN users u ON u.id = gp.assigned_user_id
+        JOIN gigs g ON g.id = gp.gig_id
+        WHERE g.band_id = ?
+          AND gp.assigned_user_id IS NOT NULL
+          AND COALESCE(TRIM(u.email), '') <> ''
+        """,
+        (band_id,),
+    ).fetchall()
+    gig_emails_by_id = {}
+    for row in gig_assignee_rows:
+        gig_emails_by_id.setdefault(row["gig_id"], set()).add(row["email"].strip())
+    whole_band_email_rows = db.execute(
+        """
+        SELECT DISTINCT u.email
+        FROM parts p
+        JOIN part_defaults pd ON pd.part_id = p.id
+        JOIN users u ON u.id = pd.user_id
+        WHERE p.band_id = ?
+          AND pd.user_id IS NOT NULL
+          AND COALESCE(TRIM(u.email), '') <> ''
+        """,
+        (band_id,),
+    ).fetchall()
+    whole_band_mailto = build_mailto_link(
+        f"[GigPlanner] {band['name']}",
+        [row["email"] for row in whole_band_email_rows],
+    )
     band_timezone = band["timezone"] or DEFAULT_BAND_TIMEZONE
     today_in_band_timezone = band_local_today(band_timezone)
     previous_gig_cutoff = years_before(today_in_band_timezone, 2)
     gigs = []
     previous_gigs = []
-    for gig in gig_rows:
+    for gig_row in gig_rows:
+        gig = dict(gig_row)
+        gig_name = gig["title"] or gig["location"] or f"Gig {gig['id']}"
+        gig["email_players_mailto"] = build_mailto_link(
+            f"[GigPlanner] {band['name']} - {gig_name}",
+            gig_emails_by_id.get(gig["id"], set()),
+        )
         gig_date = parse_iso_date(gig["gig_date"])
         if not gig_date:
             continue
@@ -2395,6 +2441,7 @@ def band_admin(band_id):
         has_rehearsals=has_rehearsals,
         gigs=gigs,
         previous_gigs=previous_gigs,
+        whole_band_mailto=whole_band_mailto,
         rehearsals=rehearsal_rows,
         players=[dict(player) for player in players],
         parts=parts,
