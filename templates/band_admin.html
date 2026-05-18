@@ -187,21 +187,32 @@
     <h3>Upcoming Rehearsals</h3>
     <div class="list-group mb-3" id="rehearsals-list">
       {% for rehearsal in rehearsals %}
-      <div class="list-group-item admin-rehearsal-card d-flex flex-wrap justify-content-between align-items-center gap-3">
-        <div>
-          <strong>{{ rehearsal['rehearsal_date']|human_date }}</strong>
-          {% if band['rehearsal_start_time'] and band['rehearsal_end_time'] %}<span class="text-muted"> | {{ band['rehearsal_start_time']|time_label }} - {{ band['rehearsal_end_time']|time_label }}</span>{% endif %}
-          {% if band['rehearsal_location'] %}<span class="text-muted"> | {{ band['rehearsal_location'] }}</span>{% endif %}
-          {% if rehearsal['is_cancelled'] %}<span class="badge text-bg-danger ms-2">Cancelled</span>{% endif %}
-          <div class="response-summary admin-response-summary mt-2">
-            <span class="response-summary-item response-summary-item-available">{{ rehearsal['available_count'] }} Available</span>
-            <span class="response-summary-item response-summary-item-not-available">{{ rehearsal['not_available_count'] }} Not Available</span>
+      <div class="list-group-item admin-rehearsal-card">
+        <div class="admin-rehearsal-card-layout">
+          <div class="admin-rehearsal-card-main">
+            <div>
+              <strong>{{ rehearsal['rehearsal_date']|human_date }}</strong>
+              {% if band['rehearsal_start_time'] and band['rehearsal_end_time'] %}<span class="text-muted"> | {{ band['rehearsal_start_time']|time_label }} - {{ band['rehearsal_end_time']|time_label }}</span>{% endif %}
+              {% if band['rehearsal_location'] %}<span class="text-muted"> | {{ band['rehearsal_location'] }}</span>{% endif %}
+              {% if rehearsal['is_cancelled'] %}<span class="badge text-bg-danger ms-2">Cancelled</span>{% endif %}
+            </div>
+            <div class="response-summary admin-response-summary mt-2">
+              <span class="response-summary-item response-summary-item-available">{{ rehearsal['available_count'] }} Available</span>
+              <span class="response-summary-item response-summary-item-not-available">{{ rehearsal['not_available_count'] }} Not Available</span>
+            </div>
           </div>
-        </div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-sm btn-outline-secondary manage-rehearsal" data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}">
-            Manage Players ({{ rehearsal['added_count'] }} added / {{ rehearsal['removed_count'] }} removed)
-          </button>
+          <div class="admin-rehearsal-actions">
+            <button
+              class="btn btn-sm {% if rehearsal['is_cancelled'] %}btn-outline-danger{% else %}btn-outline-secondary{% endif %} toggle-rehearsal-cancel"
+              data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}"
+              data-is-cancelled="{% if rehearsal['is_cancelled'] %}true{% else %}false{% endif %}"
+            >
+              {% if rehearsal['is_cancelled'] %}Reinstate Rehearsal{% else %}Cancel Rehearsal{% endif %}
+            </button>
+            <button class="btn btn-sm btn-secondary manage-rehearsal" data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}">
+              Manage Players
+            </button>
+          </div>
         </div>
       </div>
       {% endfor %}
@@ -248,10 +259,6 @@
     <div class="modal-content">
       <div class="modal-header"><h5 class="modal-title">Manage Rehearsal</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
-        <div class="form-check form-switch mb-3">
-          <input class="form-check-input" type="checkbox" id="rehearsal-cancelled-toggle">
-          <label class="form-check-label" for="rehearsal-cancelled-toggle">Rehearsal cancelled</label>
-        </div>
         <div id="rehearsal-players-list"></div>
       </div>
       <div class="modal-footer">

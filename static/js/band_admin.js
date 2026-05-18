@@ -179,7 +179,6 @@ async function openRehearsalModal(rehearsalDate) {
     alert('Could not load rehearsal details.');
     return;
   }
-  document.getElementById('rehearsal-cancelled-toggle').checked = data.is_cancelled;
   const container = document.getElementById('rehearsal-players-list');
   container.innerHTML = data.players.map((player) => `
     <label class="rehearsal-player-row d-flex justify-content-between align-items-center mb-2 ${player.is_unavailable ? 'rehearsal-player-row-unavailable' : ''}">
@@ -198,21 +197,34 @@ document.querySelectorAll('.manage-rehearsal').forEach((btn) => {
   });
 });
 
+document.querySelectorAll('.toggle-rehearsal-cancel').forEach((btn) => {
+  btn.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const rehearsalDate = button.dataset.rehearsalDate;
+    const isCancelled = button.dataset.isCancelled === 'true';
+    const res = await fetch(`/api/band/${bandId}/rehearsal/${rehearsalDate}/cancel`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({is_cancelled: !isCancelled}),
+    });
+    if (!res.ok) {
+      alert('Could not update rehearsal status.');
+      return;
+    }
+    location.hash = '#admin-rehearsals-panel';
+    location.reload();
+  });
+});
+
 document.getElementById('save-rehearsal-btn')?.addEventListener('click', async () => {
   if (!activeRehearsalDate) return;
   const scheduledPlayerIds = Array.from(document.querySelectorAll('.rehearsal-player-toggle:checked')).map((el) => Number(el.value));
-  const cancelled = document.getElementById('rehearsal-cancelled-toggle').checked;
-  const cancelRes = await fetch(`/api/band/${bandId}/rehearsal/${activeRehearsalDate}/cancel`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({is_cancelled: cancelled}),
-  });
   const playersRes = await fetch(`/api/band/${bandId}/rehearsal/${activeRehearsalDate}/players`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({scheduled_player_ids: scheduledPlayerIds}),
   });
-  if (!cancelRes.ok || !playersRes.ok) {
+  if (!playersRes.ok) {
     alert('Could not save rehearsal changes.');
     return;
   }

@@ -368,6 +368,24 @@ h3 {
   background-color: rgba(15, 23, 42, 0.9);
 }
 
+.admin-rehearsal-card-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+}
+
+.admin-rehearsal-card-main {
+  min-width: 0;
+}
+
+.admin-rehearsal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
 .admin-gig-list {
   display: grid;
   gap: 1rem;
@@ -406,14 +424,23 @@ h3 {
   justify-content: flex-end;
 }
 
+.admin-rehearsal-card .admin-response-summary {
+  justify-content: flex-start;
+}
+
 @media (max-width: 991.98px) {
   .admin-gig-card-layout {
     grid-template-columns: 1fr;
   }
 
+  .admin-rehearsal-card-layout {
+    grid-template-columns: 1fr;
+  }
+
   .admin-gig-card-side,
   .admin-response-summary,
-  .admin-gig-actions {
+  .admin-gig-actions,
+  .admin-rehearsal-actions {
     align-items: stretch;
     justify-content: flex-start;
   }
