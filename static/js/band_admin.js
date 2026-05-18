@@ -180,12 +180,36 @@ async function openRehearsalModal(rehearsalDate) {
     return;
   }
   const container = document.getElementById('rehearsal-players-list');
-  container.innerHTML = data.players.map((player) => `
+  const regularPlayers = data.players.filter((player) => player.is_regular);
+  const extraPlayers = data.players.filter((player) => !player.is_regular);
+  const renderPlayer = (player) => `
     <label class="rehearsal-player-row d-flex justify-content-between align-items-center mb-2 ${player.is_unavailable ? 'rehearsal-player-row-unavailable' : ''}">
-      <span>${player.name} ${player.is_regular ? '<small class="text-muted">(Regular)</small>' : '<small class="text-muted">(Extra)</small>'} ${player.is_unavailable ? '<small class="rehearsal-player-status">(Unavailable)</small>' : ''}</span>
+      <span>${player.name} ${player.is_regular && player.default_parts ? `<small class="text-muted">(${player.default_parts})</small>` : ''} ${player.is_unavailable ? '<small class="rehearsal-player-status">(Unavailable)</small>' : ''}</span>
       <input class="form-check-input rehearsal-player-toggle" type="checkbox" value="${player.id}" ${player.is_scheduled ? 'checked' : ''}>
     </label>
-  `).join('');
+  `;
+  const sections = [];
+  sections.push(`
+    <div class="rehearsal-player-group">
+      <div class="rehearsal-player-group-title">Regular Players</div>
+      ${regularPlayers.map(renderPlayer).join('')}
+      <div class="mt-3 d-flex justify-content-end">
+        <button class="btn btn-secondary save-rehearsal-btn">Save</button>
+      </div>
+    </div>
+  `);
+  if (extraPlayers.length) {
+    sections.push(`
+      <div class="rehearsal-player-divider">
+        <div class="rehearsal-player-group-title">Extra Players</div>
+        ${extraPlayers.map(renderPlayer).join('')}
+      </div>
+    `);
+  }
+  container.innerHTML = sections.join('');
+  container.querySelectorAll('.save-rehearsal-btn').forEach((btn) => {
+    btn.addEventListener('click', saveRehearsalPlayers);
+  });
   const modal = new bootstrap.Modal(document.getElementById('rehearsalModal'));
   modal.show();
 }
@@ -216,7 +240,7 @@ document.querySelectorAll('.toggle-rehearsal-cancel').forEach((btn) => {
   });
 });
 
-document.getElementById('save-rehearsal-btn')?.addEventListener('click', async () => {
+async function saveRehearsalPlayers() {
   if (!activeRehearsalDate) return;
   const scheduledPlayerIds = Array.from(document.querySelectorAll('.rehearsal-player-toggle:checked')).map((el) => Number(el.value));
   const playersRes = await fetch(`/api/band/${bandId}/rehearsal/${activeRehearsalDate}/players`, {
@@ -230,4 +254,8 @@ document.getElementById('save-rehearsal-btn')?.addEventListener('click', async (
   }
   location.hash = '#admin-rehearsals-panel';
   location.reload();
+}
+
+document.querySelectorAll('.save-rehearsal-btn').forEach((btn) => {
+  btn.addEventListener('click', saveRehearsalPlayers);
 });

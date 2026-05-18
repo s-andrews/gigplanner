@@ -2814,7 +2814,14 @@ def rehearsal_detail(band_id, rehearsal_date):
                    JOIN parts p ON p.id = pd.part_id
                    WHERE p.band_id = bm.band_id
                      AND pd.user_id = u.id
-               ) THEN 1 ELSE 0 END AS is_regular
+               ) THEN 1 ELSE 0 END AS is_regular,
+               COALESCE((
+                   SELECT GROUP_CONCAT(p2.name, ', ')
+                   FROM part_defaults pd2
+                   JOIN parts p2 ON p2.id = pd2.part_id
+                   WHERE p2.band_id = bm.band_id
+                     AND pd2.user_id = u.id
+               ), '') AS default_parts
         FROM band_memberships bm
         JOIN users u ON u.id = bm.user_id
         WHERE bm.band_id = ?
@@ -2848,10 +2855,12 @@ def rehearsal_detail(band_id, rehearsal_date):
                 "id": player["id"],
                 "name": player["name"],
                 "is_regular": bool(player["is_regular"]),
+                "default_parts": player["default_parts"] or "",
                 "is_scheduled": scheduled,
                 "is_unavailable": player["id"] in unavailable_user_ids,
             }
         )
+    player_rows.sort(key=lambda row: (0 if row["is_regular"] else 1, row["name"].lower()))
     cancellation = db.execute(
         """
         SELECT 1
