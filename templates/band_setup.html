@@ -1,7 +1,13 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <h2 class="mb-0">Band Setup: {{ band['name'] }}</h2>
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <div>
+      <h2 class="mb-0">Band Setup: <span id="band-name-heading">{{ band['name'] }}</span></h2>
+      <div class="text-muted small">Timezone: <span id="band-timezone-heading">{{ band['timezone']|timezone_label }}</span></div>
+    </div>
+    <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#renameBandModal">Edit Band Details</button>
+  </div>
 </div>
 <div class="row g-4">
   <div class="col-12">
@@ -101,6 +107,32 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<div class="modal fade" id="renameBandModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Change Band Name</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label" for="rename-band-name">Band name</label>
+        <input id="rename-band-name" class="form-control" value="{{ band['name'] }}" maxlength="255">
+        <label class="form-label mt-3" for="rename-band-timezone">Band timezone</label>
+        <select id="rename-band-timezone" class="form-select">
+          {% for timezone_name in timezone_options %}
+          <option value="{{ timezone_name }}" {% if band['timezone'] == timezone_name %}selected{% endif %}>{{ timezone_name|timezone_label }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">All gig dates and times for this band use this timezone.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-secondary" id="save-band-name-btn">Save Changes</button>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

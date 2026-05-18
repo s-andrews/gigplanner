@@ -2014,6 +2014,7 @@ def band_setup(band_id):
         parts=parts,
         players=players,
         weekday_options=WEEKDAY_OPTIONS,
+        timezone_options=TIMEZONE_OPTIONS,
     )
 
 
@@ -2030,6 +2031,31 @@ def add_part(band_id):
     db.execute("INSERT INTO parts (band_id, name) VALUES (?, ?)", (band_id, name))
     db.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/band/<int:band_id>/name", methods=["POST"])
+@login_required
+def update_band_name(band_id):
+    uid = session["user_id"]
+    if not is_band_admin(band_id, uid):
+        return jsonify({"ok": False}), 403
+
+    payload = request.json or {}
+    name = payload.get("name", "").strip()
+    timezone_name = normalize_band_timezone(payload.get("timezone"))
+    if not name:
+        return jsonify({"ok": False, "error": "Band name is required"}), 400
+    if not timezone_name:
+        return jsonify({"ok": False, "error": "Please choose a valid timezone for the band"}), 400
+
+    db = get_db()
+    band = db.execute("SELECT id FROM bands WHERE id = ?", (band_id,)).fetchone()
+    if not band:
+        return jsonify({"ok": False, "error": "Band not found"}), 404
+
+    db.execute("UPDATE bands SET name = ?, timezone = ? WHERE id = ?", (name, timezone_name, band_id))
+    db.commit()
+    return jsonify({"ok": True, "name": name, "timezone": timezone_name})
 
 
 @app.route("/api/band/<int:band_id>/part/<int:part_id>", methods=["DELETE"])

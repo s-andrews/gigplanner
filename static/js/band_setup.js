@@ -1,4 +1,14 @@
 const bandId = window.BAND_ID;
+let renameBandModalInstance = null;
+
+function getRenameBandModal() {
+  const modalElement = document.getElementById('renameBandModal');
+  if (!modalElement || !window.bootstrap) return null;
+  if (!renameBandModalInstance) {
+    renameBandModalInstance = new bootstrap.Modal(modalElement);
+  }
+  return renameBandModalInstance;
+}
 
 function syncDefaultPartSelections() {
   document.querySelectorAll('.default-part-select').forEach((select) => {
@@ -78,6 +88,37 @@ document.getElementById('save-rehearsal-settings-btn')?.addEventListener('click'
     return;
   }
   alert('Rehearsal settings saved.');
+});
+
+document.getElementById('save-band-name-btn')?.addEventListener('click', async () => {
+  const nameInput = document.getElementById('rename-band-name');
+  const timezoneSelect = document.getElementById('rename-band-timezone');
+  const name = nameInput?.value.trim() || '';
+  const timezone = timezoneSelect?.value || '';
+  if (!name) {
+    alert('Band name is required.');
+    return;
+  }
+  if (!timezone) {
+    alert('Band timezone is required.');
+    return;
+  }
+
+  const res = await fetch(`/api/band/${bandId}/name`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, timezone}),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Could not update band name');
+    return;
+  }
+
+  document.getElementById('band-name-heading').textContent = name;
+  document.getElementById('band-timezone-heading').textContent =
+    timezoneSelect?.selectedOptions?.[0]?.textContent || timezone;
+  getRenameBandModal()?.hide();
 });
 
 document.querySelectorAll('.default-part-select').forEach((el) => {
