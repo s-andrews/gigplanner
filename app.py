@@ -38,6 +38,15 @@ def parse_iso_datetime(value):
     return datetime.fromisoformat(value)
 
 
+def parse_iso_date(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 DEFAULT_BAND_TIMEZONE = "Europe/London"
 BUNDLED_TIMEZONE_OPTIONS = [
     "Europe/Andorra",
@@ -384,6 +393,39 @@ def normalize_band_timezone(value):
     except ZoneInfoNotFoundError:
         return None
     return timezone_name
+
+
+def load_zoneinfo(timezone_name):
+    normalized_timezone = normalize_band_timezone(timezone_name) or DEFAULT_BAND_TIMEZONE
+    try:
+        return ZoneInfo(normalized_timezone)
+    except ZoneInfoNotFoundError:
+        try:
+            return ZoneInfo(DEFAULT_BAND_TIMEZONE)
+        except ZoneInfoNotFoundError:
+            return timezone.utc
+
+
+def band_local_today(timezone_name):
+    return datetime.now(load_zoneinfo(timezone_name)).date()
+
+
+def years_before(value, years):
+    try:
+        return value.replace(year=value.year - years)
+    except ValueError:
+        return value.replace(month=2, day=28, year=value.year - years)
+
+
+def filter_visible_gigs(gigs):
+    visible_gigs = []
+    for gig in gigs:
+        gig_date = parse_iso_date(gig["gig_date"])
+        if not gig_date:
+            continue
+        if gig_date >= band_local_today(gig["band_timezone"]):
+            visible_gigs.append(gig)
+    return visible_gigs
 
 
 def parse_weekday(value):
@@ -1342,6 +1384,7 @@ def dashboard():
         """,
         (user["id"], user["id"]),
     ).fetchall()
+    gigs = filter_visible_gigs(gigs)
 
     admin_bands = db.execute(
         """
@@ -2199,7 +2242,7 @@ def band_admin(band_id):
         return redirect(url_for("dashboard"))
     db = get_db()
     band = db.execute("SELECT * FROM bands WHERE id = ?", (band_id,)).fetchone()
-    gigs = db.execute(
+    gig_rows = db.execute(
         """
         SELECT g.*,
                SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Available' THEN 1 ELSE 0 END) AS available_count,
@@ -2215,6 +2258,20 @@ def band_admin(band_id):
         """,
         (band_id,),
     ).fetchall()
+    band_timezone = band["timezone"] or DEFAULT_BAND_TIMEZONE
+    today_in_band_timezone = band_local_today(band_timezone)
+    previous_gig_cutoff = years_before(today_in_band_timezone, 2)
+    gigs = []
+    previous_gigs = []
+    for gig in gig_rows:
+        gig_date = parse_iso_date(gig["gig_date"])
+        if not gig_date:
+            continue
+        if gig_date >= today_in_band_timezone:
+            gigs.append(gig)
+        elif gig_date >= previous_gig_cutoff:
+            previous_gigs.append(gig)
+    previous_gigs.sort(key=lambda gig: (gig["gig_date"], gig["start_time"] or ""), reverse=True)
     players = db.execute(
         """
         SELECT u.id, u.name,
@@ -2311,6 +2368,7 @@ def band_admin(band_id):
         band=band,
         has_rehearsals=has_rehearsals,
         gigs=gigs,
+        previous_gigs=previous_gigs,
         rehearsals=rehearsal_rows,
         players=[dict(player) for player in players],
         parts=parts,

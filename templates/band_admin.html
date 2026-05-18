@@ -5,18 +5,21 @@
   All gig dates and times on this page use the band timezone: <strong>{{ band['timezone']|timezone_label }}</strong>.
 </div>
 
-{% if has_rehearsals %}
 <ul class="nav nav-tabs mb-3" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#admin-gigs-panel" type="button" role="tab" aria-selected="true">Gigs</button>
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#admin-gigs-panel" type="button" role="tab" aria-selected="true">Existing Gigs</button>
   </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#admin-previous-gigs-panel" type="button" role="tab" aria-selected="false">Previous Gigs</button>
+  </li>
+  {% if has_rehearsals %}
   <li class="nav-item" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#admin-rehearsals-panel" type="button" role="tab" aria-selected="false">Rehearsals</button>
   </li>
+  {% endif %}
 </ul>
 <div class="tab-content">
   <div class="tab-pane fade show active" id="admin-gigs-panel" role="tabpanel">
-{% endif %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
       <h3 class="mb-0">Existing Gigs</h3>
       <button class="btn btn-secondary" id="open-create-gig-btn" type="button">Create New Gig</button>
@@ -94,9 +97,92 @@
         </div>
       </section>
       {% endfor %}
+      {% if not gigs %}
+      <div class="alert alert-info mb-0">No existing gigs to show.</div>
+      {% endif %}
     </div>
-{% if has_rehearsals %}
   </div>
+  <div class="tab-pane fade" id="admin-previous-gigs-panel" role="tabpanel">
+    <h3>Previous Gigs</h3>
+    <div class="admin-gig-list mb-3" id="previous-gigs-list">
+      {% for gig in previous_gigs %}
+      <section
+        class="card card-body admin-gig-card dashboard-gig-card"
+        data-gig-id="{{ gig['id'] }}"
+      >
+        <script type="application/json" class="gig-card-data">{{ {
+          'id': gig['id'],
+          'title': gig['title'] or '',
+          'gig_date': gig['gig_date'],
+          'start_time': gig['start_time'],
+          'end_time': gig['end_time'],
+          'location': gig['location'],
+          'location_url': gig['location_url'] or '',
+          'notes': gig['notes'] or '',
+          'status': gig['status'],
+          'fee_per_player': gig['fee_per_player'] if gig['fee_per_player'] is not none else '',
+          'fee_for_band': gig['fee_for_band'] if gig['fee_for_band'] is not none else ''
+        }|tojson }}</script>
+        <div class="admin-gig-card-layout">
+          <div class="admin-gig-card-main">
+            <h5 class="mb-1">
+              {% if gig['title'] %}
+                {{ gig['title'] }}
+              {% else %}
+                {{ gig['location'] }}
+              {% endif %}
+            </h5>
+            <div>{{ gig['gig_date']|human_date }} | {{ gig['start_time'] }} - {{ gig['end_time'] }}</div>
+            <div class="text-muted">
+              {{ gig['location'] }}
+              {% if gig['location_url'] %}
+                | <a class="text-muted text-decoration-underline" href="{{ gig['location_url'] }}" target="_blank" rel="noopener noreferrer">Map link</a>
+              {% endif %}
+            </div>
+            <small class="text-muted">
+              Status: {{ gig['status'] }}
+              {% if gig['fee_per_player'] is not none %} | Fee/player: {{ gig['fee_per_player'] }}{% endif %}
+              {% if gig['fee_for_band'] is not none %} | Band fee: {{ gig['fee_for_band'] }}{% endif %}
+            </small>
+            {% if gig['notes'] %}
+            <div class="mt-2">
+              <button
+                class="btn btn-secondary btn-sm gig-notes-toggle"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#admin-gig-notes-{{ gig['id'] }}"
+                aria-expanded="false"
+                aria-controls="admin-gig-notes-{{ gig['id'] }}"
+              >
+                Show Notes
+              </button>
+            </div>
+            <div class="collapse mt-2" id="admin-gig-notes-{{ gig['id'] }}">
+              <div class="admin-gig-notes-preview">{{ gig['notes'] }}</div>
+            </div>
+            {% endif %}
+          </div>
+          <div class="admin-gig-card-side">
+            <div class="response-summary admin-response-summary mb-2">
+              <span class="response-summary-item response-summary-item-available">{{ gig['available_count'] }} Available</span>
+              <span class="response-summary-item response-summary-item-not-available">{{ gig['not_available_count'] }} Not Available</span>
+              <span class="response-summary-item">{{ gig['unsure_count'] }} Not sure</span>
+              <span class="response-summary-item">{{ gig['unanswered_count'] }} Unanswered</span>
+            </div>
+            <div class="admin-gig-actions">
+              <a class="btn btn-sm btn-secondary" href="{{ url_for('gig_responses_page', band_id=band['id'], gig_id=gig['id']) }}">Edit Lineup</a>
+              <button class="btn btn-sm btn-secondary edit-gig">Edit Gig</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      {% endfor %}
+      {% if not previous_gigs %}
+      <div class="alert alert-info mb-0">No previous gigs from the last 2 years.</div>
+      {% endif %}
+    </div>
+  </div>
+  {% if has_rehearsals %}
   <div class="tab-pane fade" id="admin-rehearsals-panel" role="tabpanel">
     <h3>Upcoming Rehearsals</h3>
     <div class="list-group mb-3" id="rehearsals-list">
@@ -121,8 +207,8 @@
       {% endfor %}
     </div>
   </div>
-</div>
 {% endif %}
+</div>
 
 <div class="modal fade" id="gigModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
