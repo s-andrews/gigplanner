@@ -18,7 +18,75 @@
       </p>
       <div class="mb-3">
         <label class="form-label">Subscription URL</label>
-        <input class="form-control" value="{{ calendar_subscription_url }}" readonly>
+        <div class="calendar-feed-copy-row">
+          <input
+            class="form-control"
+            id="calendar-subscription-url"
+            value="{{ calendar_subscription_url }}"
+            readonly
+          >
+          <button class="btn btn-secondary" id="copy-calendar-feed-btn" type="button">
+            Copy Link
+          </button>
+        </div>
+        <div class="calendar-feed-copy-status" id="copy-calendar-feed-status" aria-live="polite"></div>
+      </div>
+      <div class="calendar-feed-help">
+        <h3 class="h5 mb-3">How to add this calendar</h3>
+        <details class="calendar-feed-help-item">
+          <summary>Google Calendar</summary>
+          <ol class="mb-0 mt-3">
+            <li>Open Google Calendar in a web browser.</li>
+            <li>In the left sidebar, click the plus button next to <strong>Other calendars</strong>.</li>
+            <li>Choose <strong>From URL</strong>.</li>
+            <li>Paste the subscription URL and click <strong>Add calendar</strong>.</li>
+          </ol>
+        </details>
+        <details class="calendar-feed-help-item">
+          <summary>Outlook.com</summary>
+          <ol class="mb-0 mt-3">
+            <li>Open Outlook Calendar on the web.</li>
+            <li>Choose <strong>Add calendar</strong>, then select <strong>Subscribe from web</strong>.</li>
+            <li>Paste the subscription URL.</li>
+            <li>Give the calendar a name if you want, then click <strong>Import</strong>.</li>
+          </ol>
+        </details>
+        <details class="calendar-feed-help-item">
+          <summary>Outlook for Windows or Mac</summary>
+          <ol class="mb-0 mt-3">
+            <li>Open Outlook and switch to the calendar view.</li>
+            <li>Use the option to add or open a calendar from the internet.</li>
+            <li>Paste the subscription URL when prompted.</li>
+            <li>Confirm the subscription to keep the Gig Planner calendar synced.</li>
+          </ol>
+        </details>
+        <details class="calendar-feed-help-item">
+          <summary>Apple Calendar on Mac</summary>
+          <ol class="mb-0 mt-3">
+            <li>Open the Calendar app.</li>
+            <li>Choose <strong>File</strong>, then <strong>New Calendar Subscription</strong>.</li>
+            <li>Paste the subscription URL and click <strong>Subscribe</strong>.</li>
+            <li>Adjust the name or refresh settings if needed, then save.</li>
+          </ol>
+        </details>
+        <details class="calendar-feed-help-item">
+          <summary>iPhone or iPad</summary>
+          <ol class="mb-0 mt-3">
+            <li>Open <strong>Settings</strong>, then go to <strong>Apps</strong> and <strong>Calendar</strong>.</li>
+            <li>Tap <strong>Calendar Accounts</strong>, then <strong>Add Account</strong>.</li>
+            <li>Choose <strong>Other</strong>, then <strong>Add Subscribed Calendar</strong>.</li>
+            <li>Paste the subscription URL and tap <strong>Next</strong> and then <strong>Save</strong>.</li>
+          </ol>
+        </details>
+        <details class="calendar-feed-help-item">
+          <summary>Thunderbird</summary>
+          <ol class="mb-0 mt-3">
+            <li>Open Thunderbird and go to the calendar tab.</li>
+            <li>Create a new calendar and choose the network or remote calendar option.</li>
+            <li>Select the iCalendar format if asked.</li>
+            <li>Paste the subscription URL and finish the setup.</li>
+          </ol>
+        </details>
       </div>
       <div class="alert alert-info mb-0">
         <div>Keep this link private. Anyone with this URL can see the gigs and rehearsals in your personal dashboard calendar.</div>
@@ -28,4 +96,44 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const copyButton = document.getElementById('copy-calendar-feed-btn');
+  const subscriptionInput = document.getElementById('calendar-subscription-url');
+  const status = document.getElementById('copy-calendar-feed-status');
+
+  if (!copyButton || !subscriptionInput || !status) {
+    return;
+  }
+
+  copyButton.addEventListener('click', async () => {
+    const subscriptionUrl = subscriptionInput.value;
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(subscriptionUrl);
+      } else {
+        subscriptionInput.focus();
+        subscriptionInput.select();
+        subscriptionInput.setSelectionRange(0, subscriptionUrl.length);
+
+        if (!document.execCommand('copy')) {
+          throw new Error('Copy command failed.');
+        }
+      }
+
+      status.textContent = 'Calendar feed link copied to your clipboard.';
+      copyButton.textContent = 'Copied';
+      window.setTimeout(() => {
+        copyButton.textContent = 'Copy Link';
+      }, 2000);
+    } catch (error) {
+      status.textContent = 'Copy did not work automatically. Please copy the link manually.';
+    }
+  });
+});
+</script>
 {% endblock %}

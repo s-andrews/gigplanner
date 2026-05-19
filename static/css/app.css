@@ -275,6 +275,58 @@ h3 {
   border-color: rgba(217, 136, 142, 0.55);
 }
 
+.calendar-feed-copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.calendar-feed-copy-status {
+  min-height: 1.5rem;
+  margin-top: 0.55rem;
+  color: #cbd5e1;
+  font-size: 0.95rem;
+}
+
+.calendar-feed-help {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.calendar-feed-help-item {
+  border-radius: 0.75rem;
+  background-color: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  overflow: hidden;
+}
+
+.calendar-feed-help-item summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.9rem 1rem;
+  font-weight: 600;
+}
+
+.calendar-feed-help-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.calendar-feed-help-item summary::after {
+  content: '+';
+  float: right;
+  color: #cbd5e1;
+}
+
+.calendar-feed-help-item[open] summary::after {
+  content: '-';
+}
+
+.calendar-feed-help-item ol {
+  padding: 0 1.25rem 1rem 2.35rem;
+}
+
 .band-part-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -600,6 +652,10 @@ h3 {
 @media (max-width: 991.98px) {
   .gig-editor-add-part,
   .gig-part-main {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-feed-copy-row {
     grid-template-columns: 1fr;
   }
 }
