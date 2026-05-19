@@ -1375,14 +1375,20 @@ def dashboard():
     active_tab = request.args.get("tab", "gigs").strip().lower()
     if active_tab not in {"gigs", "rehearsals"}:
         active_tab = "gigs"
+    gig_band_filter = request.args.get("gig_band_id", "").strip()
     rehearsal_band_filter = request.args.get("rehearsal_band_id", "").strip()
+    selected_gig_band_id = None
+    if gig_band_filter:
+        try:
+            selected_gig_band_id = int(gig_band_filter)
+        except ValueError:
+            selected_gig_band_id = None
     try:
         rehearsal_page = max(int(request.args.get("rehearsal_page", "1") or 1), 1)
     except ValueError:
         rehearsal_page = 1
     rehearsal_page_size = 8
-    gigs = db.execute(
-        """
+    gig_query = """
         SELECT g.*, b.name AS band_name, b.timezone AS band_timezone,
                GROUP_CONCAT(gp.part_name, ', ') AS parts,
                COALESCE(av.status, 'Unanswered') AS availability_status
@@ -1391,12 +1397,28 @@ def dashboard():
         JOIN bands b ON b.id = g.band_id
         LEFT JOIN availability av ON av.gig_id = g.id AND av.user_id = ?
         WHERE gp.assigned_user_id = ?
+    """
+    gig_params = [user["id"], user["id"]]
+    if selected_gig_band_id:
+        gig_query += "\n          AND g.band_id = ?"
+        gig_params.append(selected_gig_band_id)
+    gig_query += """
         GROUP BY g.id
         ORDER BY g.gig_date ASC, g.start_time ASC
-        """,
-        (user["id"], user["id"]),
-    ).fetchall()
+    """
+    gigs = db.execute(gig_query, tuple(gig_params)).fetchall()
     gigs = filter_visible_gigs(gigs)
+    gig_bands = db.execute(
+        """
+        SELECT DISTINCT b.id, b.name
+        FROM gig_parts gp
+        JOIN gigs g ON g.id = gp.gig_id
+        JOIN bands b ON b.id = g.band_id
+        WHERE gp.assigned_user_id = ?
+        ORDER BY b.name
+        """,
+        (user["id"],),
+    ).fetchall()
 
     admin_bands = db.execute(
         """
@@ -1514,6 +1536,8 @@ def dashboard():
         "dashboard.html",
         active_tab=active_tab,
         gigs=gigs,
+        gig_bands=gig_bands,
+        selected_gig_band_id=selected_gig_band_id,
         rehearsals=paged_rehearsals,
         rehearsal_bands=rehearsal_bands,
         rehearsal_page=rehearsal_page,

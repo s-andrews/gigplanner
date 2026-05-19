@@ -20,6 +20,18 @@
 
     <div class="tab-content">
       <div class="tab-pane fade {% if active_tab == 'gigs' %}show active{% endif %}" id="gigs-panel" role="tabpanel">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+          <form method="get" class="d-flex gap-2 align-items-center">
+            <label class="small text-muted">Band</label>
+            <select name="gig_band_id" class="form-select form-select-sm" onchange="this.form.submit()">
+              <option value="">All bands</option>
+              {% for band in gig_bands %}
+              <option value="{{ band['id'] }}" {% if selected_gig_band_id == band['id'] %}selected{% endif %}>{{ band['name'] }}</option>
+              {% endfor %}
+            </select>
+            <input type="hidden" name="tab" value="gigs">
+          </form>
+        </div>
         {% if gigs %}
         <div class="list-group mb-4 mb-lg-0">
           {% for gig in gigs %}
@@ -98,8 +110,10 @@
                 <div>
                   {{ rehearsal['rehearsal_date']|human_date }}
                   {% if rehearsal['rehearsal_start_time'] and rehearsal['rehearsal_end_time'] %} | {{ rehearsal['rehearsal_start_time']|time_label }} - {{ rehearsal['rehearsal_end_time']|time_label }}{% endif %}
-                  {% if rehearsal['rehearsal_location'] %} | {{ rehearsal['rehearsal_location'] }}{% endif %}
                 </div>
+                {% if rehearsal['rehearsal_location'] %}
+                <div class="text-muted">{{ rehearsal['rehearsal_location'] }}</div>
+                {% endif %}
                 <small class="text-muted">TZ: {{ rehearsal['band_timezone']|timezone_label }}</small>
               </div>
               <div class="rehearsal-availability-control" data-band-id="{{ rehearsal['band_id'] }}" data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}">
