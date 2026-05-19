@@ -10,6 +10,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, session, url_for
+from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -1062,7 +1063,9 @@ def register():
         exists = db.execute("SELECT id, password_hash FROM users WHERE email = ?", (email,)).fetchone()
         if exists and exists["password_hash"]:
             return render_register_template(
-                error="An account with that email already exists.",
+                error=Markup(
+                    f'An account with that email already exists. It was probably created for you by a band admin, so you can <a href="{url_for("forgot_password")}">reset your password here to claim the account</a>.'
+                ),
                 form_data=form_data,
             )
 
