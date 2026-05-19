@@ -21,7 +21,6 @@
     <div class="tab-content">
       <div class="tab-pane fade {% if active_tab == 'gigs' %}show active{% endif %}" id="gigs-panel" role="tabpanel">
         {% if gigs %}
-        <h2>My Gigs</h2>
         <div class="list-group mb-4 mb-lg-0">
           {% for gig in gigs %}
           <div class="list-group-item dashboard-gig-card dashboard-gig-card-{{ gig['availability_status']|lower|replace(' ', '-') }}">
@@ -37,7 +36,9 @@
                     | <a class="text-muted text-decoration-underline" href="{{ gig['location_url'] }}" target="_blank" rel="noopener noreferrer">Map link</a>
                   {% endif %}
                 </div>
-                <small class="text-muted">Your parts: {{ gig['parts'] or '-' }} | Timezone: {{ gig['band_timezone']|timezone_label }}</small>
+                <small class="text-muted">
+                  Part: {{ gig['parts'] or '-' }} | Status: {{ gig['status'] }} | TZ: {{ gig['band_timezone']|timezone_label }}
+                </small>
                 {% if gig['notes'] %}
                 <div class="mt-2">
                   <button
@@ -75,7 +76,6 @@
 
       <div class="tab-pane fade {% if active_tab == 'rehearsals' %}show active{% endif %}" id="rehearsals-panel" role="tabpanel">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
-          <h2 class="mb-0">Rehearsals</h2>
           <form method="get" class="d-flex gap-2 align-items-center">
             <label class="small text-muted">Band</label>
             <select name="rehearsal_band_id" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -100,7 +100,7 @@
                   {% if rehearsal['rehearsal_start_time'] and rehearsal['rehearsal_end_time'] %} | {{ rehearsal['rehearsal_start_time']|time_label }} - {{ rehearsal['rehearsal_end_time']|time_label }}{% endif %}
                   {% if rehearsal['rehearsal_location'] %} | {{ rehearsal['rehearsal_location'] }}{% endif %}
                 </div>
-                <small class="text-muted">Timezone: {{ rehearsal['band_timezone']|timezone_label }}</small>
+                <small class="text-muted">TZ: {{ rehearsal['band_timezone']|timezone_label }}</small>
               </div>
               <div class="rehearsal-availability-control" data-band-id="{{ rehearsal['band_id'] }}" data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}">
                 <label class="form-label mb-0">Availability</label>
@@ -138,7 +138,7 @@
       <div class="col-12">
         <div class="card card-body">
           <h4>{{ band['name'] }}</h4>
-          <div class="text-muted small mb-2">Timezone: {{ band['timezone']|timezone_label }}</div>
+          <div class="text-muted small mb-2">TZ: {{ band['timezone']|timezone_label }}</div>
           <div class="d-flex gap-2">
             <a class="btn btn-secondary btn-sm" href="{{ url_for('band_admin', band_id=band['id']) }}">Dates Admin</a>
             <a class="btn btn-secondary btn-sm" href="{{ url_for('band_setup', band_id=band['id']) }}">Edit Band</a>

@@ -1546,15 +1546,18 @@ def user_calendar_feed(token):
     gigs = db.execute(
         """
         SELECT g.*, b.name AS band_name, b.timezone AS band_timezone,
-               GROUP_CONCAT(gp.part_name, ', ') AS parts
+               GROUP_CONCAT(gp.part_name, ', ') AS parts,
+               COALESCE(av.status, 'Unanswered') AS availability_status
         FROM gig_parts gp
         JOIN gigs g ON g.id = gp.gig_id
         JOIN bands b ON b.id = g.band_id
+        LEFT JOIN availability av ON av.gig_id = g.id AND av.user_id = ?
         WHERE gp.assigned_user_id = ?
+          AND COALESCE(av.status, 'Unanswered') != 'Not Available'
         GROUP BY g.id
         ORDER BY g.gig_date ASC, g.start_time ASC
         """,
-        (user["id"],),
+        (user["id"], user["id"]),
     ).fetchall()
     rehearsal_bands = db.execute(
         """
@@ -1641,7 +1644,11 @@ def user_calendar_feed(token):
             row["is_cancelled"] = key in cancelled_set
             row["is_included"] = override_map.get(key, row["default_included"])
             row["availability_status"] = "Not Available" if key in unavailable_set else "Available"
-        rehearsal_rows = [row for row in rehearsal_rows if row["is_included"]]
+        rehearsal_rows = [
+            row
+            for row in rehearsal_rows
+            if row["is_included"] and row["availability_status"] != "Not Available"
+        ]
 
     lines = [
         "BEGIN:VCALENDAR",
@@ -1666,7 +1673,6 @@ def user_calendar_feed(token):
             description_parts.append(f"Status: {gig['status']}")
         if gig["notes"]:
             description_parts.append(f"Notes: {gig['notes']}")
-        description_parts.append(f"Band timezone: {band_timezone}")
         description = "\\n".join(description_parts)
 
         lines.extend(
@@ -1696,7 +1702,6 @@ def user_calendar_feed(token):
             )
         else:
             description_parts.append("Time: Not configured")
-        description_parts.append(f"Band timezone: {band_timezone}")
         if rehearsal["rehearsal_location"]:
             description_parts.insert(0, f"Location: {rehearsal['rehearsal_location']}")
         description = "\\n".join(description_parts)
