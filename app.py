@@ -50,6 +50,7 @@ def parse_iso_date(value):
 
 
 DEFAULT_BAND_TIMEZONE = "Europe/London"
+DEFAULT_GIG_LOCATION = "TBC"
 BUNDLED_TIMEZONE_OPTIONS = [
     "Europe/Andorra",
     "Asia/Dubai",
@@ -2609,9 +2610,10 @@ def create_gig(band_id):
     if not is_band_admin(band_id, uid):
         return jsonify({"ok": False}), 403
     data = request.json
-    required = ["gig_date", "start_time", "end_time", "location", "status"]
+    required = ["gig_date", "start_time", "end_time", "status"]
     if not all(data.get(k) for k in required):
         return jsonify({"ok": False, "error": "Missing required fields"}), 400
+    location = (data.get("location") or "").strip() or DEFAULT_GIG_LOCATION
 
     db = get_db()
     cur = db.execute(
@@ -2625,7 +2627,7 @@ def create_gig(band_id):
             data["gig_date"],
             data["start_time"],
             data["end_time"],
-            data["location"].strip(),
+            location,
             data.get("location_url", "").strip() or None,
             data.get("notes", "").strip() or None,
             data.get("fee_per_player") or None,
@@ -2706,7 +2708,7 @@ def update_gig(gig_id):
             data.get("gig_date", gig["gig_date"]),
             data.get("start_time", gig["start_time"]),
             data.get("end_time", gig["end_time"]),
-            data.get("location", gig["location"]).strip(),
+            (data.get("location", gig["location"]) or "").strip() or DEFAULT_GIG_LOCATION,
             data.get("location_url", gig["location_url"] or "").strip() or None,
             data.get("notes", gig["notes"] or "").strip() or None,
             data.get("fee_per_player", gig["fee_per_player"]),
