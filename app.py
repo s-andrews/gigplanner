@@ -2312,13 +2312,17 @@ def band_admin(band_id):
     gig_rows = db.execute(
         """
         SELECT g.*,
-               SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Available' THEN 1 ELSE 0 END) AS available_count,
-               SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Not Available' THEN 1 ELSE 0 END) AS not_available_count,
-               SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Unsure yet' THEN 1 ELSE 0 END) AS unsure_count,
-               SUM(CASE WHEN COALESCE(av.status, 'Unanswered') = 'Unanswered' THEN 1 ELSE 0 END) AS unanswered_count
+               SUM(CASE WHEN assigned_players.user_id IS NOT NULL AND COALESCE(av.status, 'Unanswered') = 'Available' THEN 1 ELSE 0 END) AS available_count,
+               SUM(CASE WHEN assigned_players.user_id IS NOT NULL AND COALESCE(av.status, 'Unanswered') = 'Not Available' THEN 1 ELSE 0 END) AS not_available_count,
+               SUM(CASE WHEN assigned_players.user_id IS NOT NULL AND COALESCE(av.status, 'Unanswered') = 'Unsure yet' THEN 1 ELSE 0 END) AS unsure_count,
+               SUM(CASE WHEN assigned_players.user_id IS NOT NULL AND COALESCE(av.status, 'Unanswered') = 'Unanswered' THEN 1 ELSE 0 END) AS unanswered_count
         FROM gigs g
-        LEFT JOIN band_memberships bm ON bm.band_id = g.band_id
-        LEFT JOIN availability av ON av.gig_id = g.id AND av.user_id = bm.user_id
+        LEFT JOIN (
+            SELECT DISTINCT gig_id, assigned_user_id AS user_id
+            FROM gig_parts
+            WHERE assigned_user_id IS NOT NULL
+        ) assigned_players ON assigned_players.gig_id = g.id
+        LEFT JOIN availability av ON av.gig_id = g.id AND av.user_id = assigned_players.user_id
         WHERE g.band_id = ?
         GROUP BY g.id
         ORDER BY g.gig_date ASC, g.start_time ASC
