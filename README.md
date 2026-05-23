@@ -257,6 +257,20 @@ When a band admin adds a new player by email:
 
 That user can then claim the account by using `Reset your password` on the login page.
 
+To set a user's password immediately without email verification, run:
+
+```bash
+python reset_user_password.py user@example.com
+```
+
+You will be prompted for the new password and confirmation. You can also pass it directly:
+
+```bash
+python reset_user_password.py user@example.com --password "NewPassword123!"
+```
+
+The script updates the stored password hash in the main SQLite database right away, using the same password complexity rules as the web app.
+
 The reset email:
 
 - comes from `noreply@gigplanner.uk` by default
