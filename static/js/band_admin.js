@@ -2,9 +2,12 @@ const bandId = window.BAND_ID;
 let activeRehearsalDate = null;
 let activeGigId = null;
 let gigModalInstance = null;
+let rehearsalModalInstance = null;
 let gigModalMode = 'edit';
 let activeResponsePopover = null;
 let activeResponsePopoverTrigger = null;
+let rehearsalModalHistoryActive = false;
+let isHandlingRehearsalModalPopstate = false;
 
 function activateAdminTabFromHash() {
   if (!window.bootstrap || !location.hash) return;
@@ -20,6 +23,66 @@ function getGigModal() {
     gigModalInstance = new bootstrap.Modal(modalElement);
   }
   return gigModalInstance;
+}
+
+function getRehearsalModal() {
+  const modalElement = document.getElementById('rehearsalModal');
+  if (!modalElement || !window.bootstrap) return null;
+  if (!rehearsalModalInstance) {
+    rehearsalModalInstance = new bootstrap.Modal(modalElement);
+  }
+  return rehearsalModalInstance;
+}
+
+function isRehearsalModalState(state) {
+  return Boolean(state && state.rehearsalModalOpen && state.rehearsalDate);
+}
+
+function isRehearsalModalShown() {
+  return document.getElementById('rehearsalModal')?.classList.contains('show');
+}
+
+function pushRehearsalModalHistoryState(rehearsalDate) {
+  const nextState = {
+    ...(history.state || {}),
+    rehearsalModalOpen: true,
+    rehearsalDate,
+  };
+  history.pushState(nextState, '', `${location.pathname}${location.search}#admin-rehearsals-panel`);
+  rehearsalModalHistoryActive = true;
+}
+
+function setupRehearsalModalHistory() {
+  const modalElement = document.getElementById('rehearsalModal');
+  if (!modalElement || !window.bootstrap) return;
+
+  modalElement.addEventListener('hidden.bs.modal', () => {
+    activeRehearsalDate = null;
+    if (isHandlingRehearsalModalPopstate) {
+      isHandlingRehearsalModalPopstate = false;
+      rehearsalModalHistoryActive = false;
+      return;
+    }
+    if (rehearsalModalHistoryActive) {
+      history.back();
+    }
+  });
+
+  window.addEventListener('popstate', async (event) => {
+    if (isRehearsalModalShown() && !isRehearsalModalState(event.state)) {
+      isHandlingRehearsalModalPopstate = true;
+      getRehearsalModal()?.hide();
+      return;
+    }
+
+    if (!isRehearsalModalShown() && isRehearsalModalState(event.state)) {
+      rehearsalModalHistoryActive = true;
+      await openRehearsalModal(event.state.rehearsalDate, {pushHistory: false});
+      return;
+    }
+
+    rehearsalModalHistoryActive = isRehearsalModalState(event.state);
+  });
 }
 
 function getGigCardData(card) {
@@ -172,6 +235,7 @@ document.querySelectorAll('.nav-tabs [data-bs-toggle="tab"]').forEach((tabButton
 
 activateAdminTabFromHash();
 setupResponseSummaryPopovers();
+setupRehearsalModalHistory();
 
 async function createGig() {
   const payload = getGigPayloadFromModal();
@@ -244,7 +308,7 @@ document.getElementById('delete-gig-btn')?.addEventListener('click', async () =>
   activeGigId = null;
 });
 
-async function openRehearsalModal(rehearsalDate) {
+async function openRehearsalModal(rehearsalDate, {pushHistory = true} = {}) {
   activeRehearsalDate = rehearsalDate;
   const res = await fetch(`/api/band/${bandId}/rehearsal/${rehearsalDate}`);
   const data = await res.json();
@@ -283,7 +347,12 @@ async function openRehearsalModal(rehearsalDate) {
   container.querySelectorAll('.save-rehearsal-btn').forEach((btn) => {
     btn.addEventListener('click', saveRehearsalPlayers);
   });
-  const modal = new bootstrap.Modal(document.getElementById('rehearsalModal'));
+  if (pushHistory) {
+    pushRehearsalModalHistoryState(rehearsalDate);
+  } else {
+    rehearsalModalHistoryActive = true;
+  }
+  const modal = getRehearsalModal();
   modal.show();
 }
 
