@@ -3,6 +3,8 @@ let activeRehearsalDate = null;
 let activeGigId = null;
 let gigModalInstance = null;
 let gigModalMode = 'edit';
+let activeResponsePopover = null;
+let activeResponsePopoverTrigger = null;
 
 function activateAdminTabFromHash() {
   if (!window.bootstrap || !location.hash) return;
@@ -75,6 +77,76 @@ function setGigModalMode(mode) {
   deleteButton.classList.toggle('d-none', isCreateMode);
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function buildResponsePopoverContent(names, title) {
+  if (!names.length) {
+    return `<div class="response-summary-popup-empty">No one is marked ${escapeHtml(title.toLowerCase())}.</div>`;
+  }
+  return `
+    <div class="response-summary-popup-names">
+      ${names.map((name) => `<div>${escapeHtml(name)}</div>`).join('')}
+    </div>
+  `;
+}
+
+function hideActiveResponsePopover() {
+  if (!activeResponsePopover) return;
+  activeResponsePopover.hide();
+  activeResponsePopover.dispose();
+  activeResponsePopover = null;
+  activeResponsePopoverTrigger = null;
+}
+
+function setupResponseSummaryPopovers() {
+  if (!window.bootstrap) return;
+  document.querySelectorAll('.response-summary-trigger').forEach((trigger) => {
+    trigger.addEventListener('click', () => {
+      const names = JSON.parse(trigger.dataset.responsePopupNames || '[]');
+      const popupStyle = trigger.dataset.responsePopupStyle || 'unanswered';
+      const title = trigger.dataset.responsePopupTitle || 'Availability';
+
+      if (activeResponsePopover && activeResponsePopoverTrigger === trigger) {
+        hideActiveResponsePopover();
+        return;
+      }
+
+      hideActiveResponsePopover();
+      activeResponsePopoverTrigger = trigger;
+      activeResponsePopover = new bootstrap.Popover(trigger, {
+        container: 'body',
+        customClass: `response-summary-popup response-summary-popup-${popupStyle}`,
+        content: buildResponsePopoverContent(names, title),
+        html: true,
+        placement: 'bottom',
+        sanitize: false,
+        trigger: 'manual',
+      });
+      activeResponsePopover.show();
+    });
+  });
+
+  document.addEventListener('click', (event) => {
+    const clickedTrigger = event.target.closest('.response-summary-trigger');
+    const clickedPopover = event.target.closest('.response-summary-popup');
+    if (clickedTrigger || clickedPopover) return;
+    hideActiveResponsePopover();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      hideActiveResponsePopover();
+    }
+  });
+}
+
 function getGigPayloadFromModal() {
   return {
     title: document.getElementById('modal-gig-title').value,
@@ -99,6 +171,7 @@ document.querySelectorAll('.nav-tabs [data-bs-toggle="tab"]').forEach((tabButton
 });
 
 activateAdminTabFromHash();
+setupResponseSummaryPopovers();
 
 async function createGig() {
   const payload = getGigPayloadFromModal();

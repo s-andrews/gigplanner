@@ -89,10 +89,10 @@
           </div>
           <div class="admin-gig-card-side">
             <div class="response-summary admin-response-summary mb-2">
-              <span class="response-summary-item response-summary-item-available">{{ gig['available_count'] }} Available</span>
-              <span class="response-summary-item response-summary-item-not-available">{{ gig['not_available_count'] }} Not Available</span>
-              <span class="response-summary-item response-summary-item-unsure-yet">{{ gig['unsure_count'] }} Not sure</span>
-              <span class="response-summary-item">{{ gig['unanswered_count'] }} Unanswered</span>
+              <button type="button" class="response-summary-item response-summary-trigger response-summary-item-available" data-response-popup-title="Available" data-response-popup-style="available" data-response-popup-names='{{ gig["response_names"]["available"]|tojson }}'>{{ gig['available_count'] }} Available</button>
+              <button type="button" class="response-summary-item response-summary-trigger response-summary-item-not-available" data-response-popup-title="Not Available" data-response-popup-style="not-available" data-response-popup-names='{{ gig["response_names"]["not_available"]|tojson }}'>{{ gig['not_available_count'] }} Not Available</button>
+              <button type="button" class="response-summary-item response-summary-trigger response-summary-item-unsure-yet" data-response-popup-title="Not sure" data-response-popup-style="unsure-yet" data-response-popup-names='{{ gig["response_names"]["unsure"]|tojson }}'>{{ gig['unsure_count'] }} Not sure</button>
+              <button type="button" class="response-summary-item response-summary-trigger" data-response-popup-title="Unanswered" data-response-popup-style="unanswered" data-response-popup-names='{{ gig["response_names"]["unanswered"]|tojson }}'>{{ gig['unanswered_count'] }} Unanswered</button>
             </div>
             <div class="admin-gig-actions">
               {% if gig['email_players_mailto'] %}
@@ -172,10 +172,10 @@
           </div>
           <div class="admin-gig-card-side">
             <div class="response-summary admin-response-summary mb-2">
-              <span class="response-summary-item response-summary-item-available">{{ gig['available_count'] }} Available</span>
-              <span class="response-summary-item response-summary-item-not-available">{{ gig['not_available_count'] }} Not Available</span>
-              <span class="response-summary-item response-summary-item-unsure-yet">{{ gig['unsure_count'] }} Not sure</span>
-              <span class="response-summary-item">{{ gig['unanswered_count'] }} Unanswered</span>
+              <button type="button" class="response-summary-item response-summary-trigger response-summary-item-available" data-response-popup-title="Available" data-response-popup-style="available" data-response-popup-names='{{ gig["response_names"]["available"]|tojson }}'>{{ gig['available_count'] }} Available</button>
+              <button type="button" class="response-summary-item response-summary-trigger response-summary-item-not-available" data-response-popup-title="Not Available" data-response-popup-style="not-available" data-response-popup-names='{{ gig["response_names"]["not_available"]|tojson }}'>{{ gig['not_available_count'] }} Not Available</button>
+              <button type="button" class="response-summary-item response-summary-trigger response-summary-item-unsure-yet" data-response-popup-title="Not sure" data-response-popup-style="unsure-yet" data-response-popup-names='{{ gig["response_names"]["unsure"]|tojson }}'>{{ gig['unsure_count'] }} Not sure</button>
+              <button type="button" class="response-summary-item response-summary-trigger" data-response-popup-title="Unanswered" data-response-popup-style="unanswered" data-response-popup-names='{{ gig["response_names"]["unanswered"]|tojson }}'>{{ gig['unanswered_count'] }} Unanswered</button>
             </div>
             <div class="admin-gig-actions">
               {% if gig['email_players_mailto'] %}

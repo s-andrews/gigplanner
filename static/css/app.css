@@ -188,6 +188,59 @@ h3 {
   padding: 0.2rem 0.5rem;
 }
 
+.response-summary-trigger {
+  appearance: none;
+  border-width: 1px;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+}
+
+.response-summary-trigger:hover,
+.response-summary-trigger:focus {
+  color: #f8f9fa;
+  box-shadow: 0 0 0 2px rgba(248, 249, 250, 0.12);
+}
+
+.response-summary-popup {
+  --bs-popover-max-width: 18rem;
+  --bs-popover-border-color: rgba(148, 163, 184, 0.25);
+  --bs-popover-header-bg: transparent;
+  --bs-popover-header-color: #f8f9fa;
+  --bs-popover-body-color: #f8f9fa;
+}
+
+.response-summary-popup .popover-header {
+  display: none;
+}
+
+.response-summary-popup .popover-body {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.55rem;
+}
+
+.response-summary-popup .response-summary-popup-names,
+.response-summary-popup .response-summary-popup-empty {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.response-summary-popup-available {
+  --bs-popover-bg: rgba(74, 124, 89, 0.92);
+}
+
+.response-summary-popup-not-available {
+  --bs-popover-bg: rgba(136, 78, 82, 0.92);
+}
+
+.response-summary-popup-unsure-yet {
+  --bs-popover-bg: rgba(176, 112, 46, 0.94);
+}
+
+.response-summary-popup-unanswered {
+  --bs-popover-bg: rgba(30, 41, 59, 0.95);
+}
+
 .admin-gig-list {
   display: grid;
   gap: 1rem;

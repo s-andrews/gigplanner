@@ -2342,9 +2342,41 @@ def band_admin(band_id):
         """,
         (band_id,),
     ).fetchall()
+    gig_response_rows = db.execute(
+        """
+        SELECT assigned_players.gig_id,
+               u.name,
+               COALESCE(av.status, 'Unanswered') AS availability_status
+        FROM (
+            SELECT DISTINCT gig_id, assigned_user_id AS user_id
+            FROM gig_parts
+            WHERE assigned_user_id IS NOT NULL
+        ) assigned_players
+        JOIN users u ON u.id = assigned_players.user_id
+        JOIN gigs g ON g.id = assigned_players.gig_id
+        LEFT JOIN availability av ON av.gig_id = assigned_players.gig_id AND av.user_id = assigned_players.user_id
+        WHERE g.band_id = ?
+        ORDER BY LOWER(u.name), u.name
+        """,
+        (band_id,),
+    ).fetchall()
     gig_emails_by_id = {}
     for row in gig_assignee_rows:
         gig_emails_by_id.setdefault(row["gig_id"], set()).add(row["email"].strip())
+    gig_response_names_by_id = {}
+    for row in gig_response_rows:
+        gig_names = gig_response_names_by_id.setdefault(
+            row["gig_id"],
+            {"available": [], "not_available": [], "unsure": [], "unanswered": []},
+        )
+        if row["availability_status"] == "Available":
+            gig_names["available"].append(row["name"])
+        elif row["availability_status"] == "Not Available":
+            gig_names["not_available"].append(row["name"])
+        elif row["availability_status"] == "Unsure yet":
+            gig_names["unsure"].append(row["name"])
+        else:
+            gig_names["unanswered"].append(row["name"])
     whole_band_email_rows = db.execute(
         """
         SELECT DISTINCT u.email
@@ -2372,6 +2404,10 @@ def band_admin(band_id):
         gig["email_players_mailto"] = build_mailto_link(
             f"[GigPlanner] {band['name']} - {gig_name}",
             gig_emails_by_id.get(gig["id"], set()),
+        )
+        gig["response_names"] = gig_response_names_by_id.get(
+            gig["id"],
+            {"available": [], "not_available": [], "unsure": [], "unanswered": []},
         )
         gig_date = parse_iso_date(gig["gig_date"])
         if not gig_date:
