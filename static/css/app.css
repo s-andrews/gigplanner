@@ -107,6 +107,27 @@ h3 {
   width: auto;
 }
 
+.site-footer {
+  padding: 0 0 1.5rem;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+.site-footer .container {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.site-footer a,
+.site-footer a:visited {
+  color: #f8f9fa;
+}
+
+.site-footer a:hover,
+.site-footer a:focus {
+  color: #ffffff;
+}
+
 .auth-page-title {
   display: flex;
   align-items: center;
