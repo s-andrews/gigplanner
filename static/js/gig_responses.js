@@ -132,9 +132,7 @@ function renderParts(parts) {
         <div class="gig-part-main">
           <input class="form-control gp-name" value="${part.part_name}">
           <div class="gig-part-player-slot">
-            <span class="gig-part-player-meta">
-              <span class="gig-part-dep ${isDep ? '' : 'd-none'}">Dep</span>
-            </span>
+            ${isDep ? '<span class="gig-part-player-meta"><span class="gig-part-dep">Dep</span></span>' : ''}
             <select class="form-select gp-player response-select response-select-${status.toLowerCase().replaceAll(' ', '-')}" data-user-id="${part.assigned_user_id || ''}">${buildPlayerOptions(part.assigned_user_id)}</select>
           </div>
           <div class="gig-part-availability-wrap">
