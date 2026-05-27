@@ -208,13 +208,13 @@
               {% if rehearsal['is_cancelled'] %}<span class="badge text-bg-danger ms-2">Cancelled</span>{% endif %}
             </div>
             <div class="response-summary admin-response-summary mt-2">
-              <span class="response-summary-item response-summary-item-available">{{ rehearsal['available_count'] }} Available</span>
-              <span class="response-summary-item response-summary-item-not-available">{{ rehearsal['not_available_count'] }} Not Available</span>
+              <button type="button" class="response-summary-item response-summary-trigger response-summary-item-available" data-response-popup-title="Available" data-response-popup-style="available" data-response-popup-names='{{ rehearsal["response_names"]["available"]|tojson }}'>{{ rehearsal['available_count'] }} Available</button>
+              <button type="button" class="response-summary-item response-summary-trigger response-summary-item-not-available" data-response-popup-title="Not Available" data-response-popup-style="not-available" data-response-popup-names='{{ rehearsal["response_names"]["not_available"]|tojson }}'>{{ rehearsal['not_available_count'] }} Not Available</button>
             </div>
           </div>
           <div class="admin-rehearsal-actions">
             <button
-              class="btn btn-sm {% if rehearsal['is_cancelled'] %}btn-outline-danger{% else %}btn-outline-secondary{% endif %} toggle-rehearsal-cancel"
+              class="btn btn-sm btn-outline-danger toggle-rehearsal-cancel"
               data-rehearsal-date="{{ rehearsal['rehearsal_date'] }}"
               data-is-cancelled="{% if rehearsal['is_cancelled'] %}true{% else %}false{% endif %}"
             >

@@ -2434,6 +2434,7 @@ def band_admin(band_id):
         """,
         (band_id,),
     ).fetchall()
+    player_name_by_id = {player["id"]: player["name"] for player in players}
     parts = db.execute("SELECT * FROM parts WHERE band_id = ? ORDER BY name", (band_id,)).fetchall()
     rehearsal_rows = []
     has_rehearsals = band["rehearsal_enabled"] and band["rehearsal_weekday"] is not None
@@ -2496,6 +2497,22 @@ def band_admin(band_id):
             counts = override_map.get(rehearsal_date, {"added_count": 0, "removed_count": 0})
             scheduled_players = included_players_by_date.get(rehearsal_date, set(regular_player_ids))
             unavailable_players = unavailable_by_date.get(rehearsal_date, set())
+            available_names = sorted(
+                [
+                    player_name_by_id[user_id]
+                    for user_id in scheduled_players
+                    if user_id not in unavailable_players and user_id in player_name_by_id
+                ],
+                key=str.lower,
+            )
+            not_available_names = sorted(
+                [
+                    player_name_by_id[user_id]
+                    for user_id in scheduled_players
+                    if user_id in unavailable_players and user_id in player_name_by_id
+                ],
+                key=str.lower,
+            )
             not_available_count = sum(1 for user_id in scheduled_players if user_id in unavailable_players)
             available_count = len(scheduled_players) - not_available_count
             rehearsal_rows.append(
@@ -2506,6 +2523,10 @@ def band_admin(band_id):
                     "removed_count": counts["removed_count"] or 0,
                     "available_count": available_count,
                     "not_available_count": not_available_count,
+                    "response_names": {
+                        "available": available_names,
+                        "not_available": not_available_names,
+                    },
                 }
             )
     return render_template(
